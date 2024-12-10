@@ -19,7 +19,7 @@ movement <- read_parquet("pre_processed_movement.parquet")
 tiles <- read_parquet("distinct_LONLAT.parquet")
 london<- read_sf('msoa2021/merged_districts.shp')
 london <- st_transform(london, crs = 4326)
-districts <- c("City of London")
+districts <- c("City of London", "Westminster")
 hexagons <- read_sf('hexgr.shp')
 london_filtered <- london[london$district_n %in% districts, ]
 
@@ -112,16 +112,100 @@ mean_value |> moran.test(listw = mov_lw_d183_idw_B, randomisation = FALSE) |>
 
 ## with linear model
 lm(mean_value ~ 1, hexagons_with_means) |>
-  lm.morantest(listw = lw_q_B) |>
+  lm.morantest(listw = mov_lw_q_B) |>
   glance_htest()
 
 plot(lm(mean_value ~ 1, hexagons_with_means))
 
+### local Moran's I ####
+mov_nb_q |> nb2listw(style = "W", zero.policy = TRUE) -> mov_lw_q_W
 
-plot(lm(Imean_value ~ mean_value, hexagons_with_means))
-lm(Imean_value ~ mean_value, hexagons_with_means) |>
-  lm.morantest(listw = lw_q_B) |>
-  glance_htest()
+mean_value |> 
+  localmoran(listw = mov_lw_q_W) -> mov_locm
+mov_locm
 
-plot(hexagons_with_means$Imean_value, hexagons_with_means$mean_value)
-plot(lm(Imean_value ~ mean_value, hexagons_with_means))
+mean_value |> 
+  moran.plot(listw = mov_lw_q_W, labels = hexagons_with_means$grid_id, 
+             cex = 1, pch = ".", xlab = "I round turnout", 
+             ylab = "lagged turnout") -> mov_infl_W
+
+hexagons_with_means$hat_value <- mov_infl_W$hat
+tm_shape(hexagons_with_means) + tm_fill("hat_value")
+
+## global vs local
+sum(mov_locm[,1])/Szero(mov_lw_q_W)
+unname(moran.test(mean_value, mov_lw_q_W)$estimate[1])
+
+##
+
+hexagons_with_means$locm_pv <- p.adjust(mov_locm[, "Pr(z != E(Ii))"], "fdr")
+
+tm_shape(hexagons_with_means) +
+  tm_fill(c("locm_pv"), 
+          breaks=c(0, 0.0005, 0.001, 0.005, 0.01, 
+                   0.05, 0.1, 0.2, 0.5, 0.75, 1), 
+          title = "Pseudo p-values\nLocal Moran's I",
+          palette="-YlOrBr", legend.show = F) +
+  tm_layout(panel.labels = c("Analytical conditional"))
+
+
+
+
+
+mov_quadr <- attr(mov_locm, "quadr")$mean
+mov_a <- table(addNA(mov_quadr))
+mov_locm |> hotspot(Prname="Pr(z != E(Ii))", cutoff = 0.001, 
+                droplevels=FALSE) -> hexagons_with_means$hs_an_q
+mov_b <- table(addNA(hexagons_with_means$hs_an_q))
+t(rbind("Moran plot quadrants" = mov_a, "Analytical cond." = b))
+
+hexagons_with_means$hs_an_q <- droplevels(hexagons_with_means$hs_an_q)
+
+tm_shape(hexagons_with_means) +
+  tm_fill(c("hs_an_q"),
+          colorNA = "grey95", textNA="Not \"interesting\"",
+          title = "Turnout hotspot status \nLocal Moran's I",
+          palette = RColorBrewer::brewer.pal(4, "Set3")[-c(2,3)]) +
+  tm_layout(panel.labels = c("Analytical conditional"))
+
+
+## models
+
+
+lm(I_turnout ~ 1) -> lm_null
+
+
+
+lm_null |> localmoran.sad(nb = nb_q, style = "W",
+                          alternative = "two.sided") |>
+  summary() -> locm_sad_null
+
+
+
+lm(I_turnout ~ 1, weights = hexagons_with_means$I_entitled_to_vote) ->
+  lm_null_weights
+lm_null_weights |>
+  localmoran.sad(nb = nb_q, style = "W",
+                 alternative = "two.sided") |>
+  summary() -> locm_sad_null_weights
+
+
+
+lm(I_turnout ~ Types, weights=hexagons_with_means$I_entitled_to_vote) ->
+  lm_types
+lm_types |> localmoran.sad(nb = nb_q, style = "W",
+                           alternative = "two.sided") |>
+  summary() -> locm_sad_types
+
+
+
+locm_sad_null |> hotspot(Prname="Pr. (Sad)",
+                         cutoff=0.005) -> hexagons_with_means$locm_sad0
+locm_sad_null_weights |> hotspot(Prname="Pr. (Sad)",
+                                 cutoff = 0.005) -> hexagons_with_means$locm_sad1
+locm_sad_types |> hotspot(Prname="Pr. (Sad)",
+                          cutoff = 0.005) -> hexagons_with_means$locm_sad2
+
+### local Getis Ord
+I_turnout |> 
+  localG(lw_q_W, return_internals = TRUE)
