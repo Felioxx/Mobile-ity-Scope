@@ -157,7 +157,7 @@ mov_a <- table(addNA(mov_quadr))
 mov_locm |> hotspot(Prname="Pr(z != E(Ii))", cutoff = 0.001, 
                 droplevels=FALSE) -> hexagons_with_means$hs_an_q
 mov_b <- table(addNA(hexagons_with_means$hs_an_q))
-t(rbind("Moran plot quadrants" = mov_a, "Analytical cond." = b))
+t(rbind("Moran plot quadrants" = mov_a, "Analytical cond." = mov_b))
 
 hexagons_with_means$hs_an_q <- droplevels(hexagons_with_means$hs_an_q)
 
