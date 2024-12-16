@@ -81,7 +81,7 @@ filter_movement_data <- function(movement_data, tiles, london_filtered, hexagons
   movement_join_within_hex <- st_join(movement_join_within, hexagons_intersects, join = st_within)
   hexagon_means <- movement_join_within_hex %>%
     group_by(grid_id) %>%
-    summarise(mean_value = mean(mean_column, na.rm = TRUE))
+    summarise(mean_value = mean_column)
   hexagon_means <- hexagon_means %>% st_drop_geometry()
   hexagons_with_means <- hexagons_intersects %>%
     left_join(hexagon_means, by = c("grid_id" = "grid_id"))
@@ -240,63 +240,6 @@ server <- function(input, output, session) {
     }
   })
   
-  # filtered_data <- eventReactive(input$submit, {
-  #   req(input$districts, input$selected_date)
-  #   calculate_one_date(
-  #     movement_data = movement,
-  #     tiles = tiles,
-  #     london = london,
-  #     pois = pois,
-  #     hexagons = hexagons,
-  #     date = as.character(input$selected_date),
-  #     districts = input$districts
-  #   )
-  # })
-  # 
-  # 
-  # filtered_data <- eventReactive(input$submit2, {
-  #   req(input$districts, input$selected_date, input$selected_date_2)
-  #   compare_dates(
-  #     movement_data = movement,
-  #     tiles = tiles,
-  #     london = london,
-  #     pois = pois,
-  #     hexagons = hexagons,
-  #     date1 = as.character(input$selected_date),
-  #     date2 = as.character(input$selected_date_2),
-  #     districts = input$districts
-  #   )
-  # })
-  
-  # filtered_data <- reactive({
-  #   if (input$submit > 0) {
-  #     req(input$districts, input$selected_date)
-  #     return(filter_data(
-  #       movement_data = movement,
-  #       tiles = tiles,
-  #       london = london,
-  #       pois = pois,
-  #       hexagons = hexagons,
-  #       date = as.character(input$selected_date),
-  #       districts = input$districts
-  #     ))
-  #   } else if (input$submit2 > 0) {
-  #     req(input$districts, input$selected_date, input$selected_date_2)
-  #     return(compare_dates(
-  #       movement_data = movement,
-  #       tiles = tiles,
-  #       london = london,
-  #       pois = pois,
-  #       hexagons = hexagons,
-  #       date1 = as.character(input$selected_date),
-  #       date2 = as.character(input$selected_date_2),
-  #       districts = input$districts
-  #     ))
-  #   }
-  #   return(NULL)
-  # })
-  
-  
   # Initiale Karte rendern
   output$map <- renderLeaflet({
     leaflet() %>%
@@ -323,7 +266,7 @@ server <- function(input, output, session) {
     
     # Karte aktualisieren
     leafletProxy("map") %>%
-      clearGroup(c("Heatmap", "London", "Movement Points", "POIs", "Hexagons")) %>%
+      clearGroup(c("Heatmap", "London", "Hexagons", "Movement Points", "Shops", "Museums")) %>%
       clearControls() %>%
       # Heatmap
       # addHeatmap(
@@ -337,6 +280,31 @@ server <- function(input, output, session) {
       #   group = "Heatmap"
       # ) %>%
       
+      # POIs
+      addAwesomeMarkers(
+        data = data$pois_within[data$pois_within$type == "shop", ],
+        lng = ~lon, lat = ~lat,
+        popup = ~paste("Name:", name),
+        group = "Shops",
+        icon=awesomeIcons(
+          icon = 'fa-shopping-cart',
+          iconColor = 'black',
+          library = 'fa',
+          markerColor = "green"
+        )) %>%
+      
+      addAwesomeMarkers(
+        data = data$pois_within[data$pois_within$type == "museum", ],
+        lng = ~lon, lat = ~lat,
+        popup = ~paste("Name:", name),
+        group = "Museums",
+        icon=awesomeIcons(
+          icon = 'ion-android-color-palette',
+          iconColor = 'black',
+          library = 'ion',
+          markerColor = "orange"
+        )) %>%
+      
       # London-Polygon
       addPolygons(
         data = data$london_filtered,
@@ -345,15 +313,6 @@ server <- function(input, output, session) {
         fillOpacity = 0.1,
         group = "London"
       ) %>%
-      
-      # Hexagons
-      addPolygons(data = data$hexagons_with_means,
-                  color = "black",
-                  weight = 1,
-                  fillColor = ~fixed_bin_scale(mean_value),
-                  fillOpacity = 0.7,
-                  popup = ~paste("Mean Column:", mean_value),
-                  group = "Hexagons") %>%
       
       # Punkte
       addCircleMarkers(
@@ -366,22 +325,14 @@ server <- function(input, output, session) {
         group = "Movement Points"
       ) %>%
       
-      # POIs
-      addCircleMarkers(
-        data = data$pois_within[data$pois_within$type == "shop", ],
-        lng = ~lon, lat = ~lat,
-        popup = ~paste("Name:", name),
-        group = "Shops",
-        color = "blue"
-      ) %>%
-      # Add markers for museums with a specific color
-      addCircleMarkers(
-        data = data$pois_within[data$pois_within$type == "museum", ],
-        lng = ~lon, lat = ~lat,
-        popup = ~paste("Name:", name),
-        group = "Museums",
-        color = "orange"
-      ) %>%
+      # Hexagons
+      addPolygons(data = data$hexagons_with_means,
+                  color = "black",
+                  weight = 1,
+                  fillColor = ~fixed_bin_scale(mean_value),
+                  fillOpacity = 0.7,
+                  popup = ~paste("Mean Column:", mean_value),
+                  group = "Hexagons") %>%
       
       addLegend(
         position = "bottomright",
@@ -393,7 +344,7 @@ server <- function(input, output, session) {
       
       # Layers control
       addLayersControl(
-        overlayGroups = c("Heatmap", "London", "Hexagons", "Movement Points", "Shops", "Museums"),
+        overlayGroups = c("London", "Hexagons", "Movement Points", "Shops", "Museums"),
         options = layersControlOptions(collapsed = FALSE)
       )
   })
