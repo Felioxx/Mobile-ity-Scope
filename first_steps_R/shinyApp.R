@@ -21,12 +21,21 @@ shops$type <- "shop"
 museums$type <- "museum"
 pois <- rbind(shops, museums)
 
-hexagons <- read_sf('hexgr_2.shp')
+#hexagons <- read_sf('hexgr_2.shp')
 
-grid <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_18.shp')
-grid$grid_id <- seq(1, nrow(grid))
+grid_18 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_18.shp')
+grid_17 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_17.shp')
+grid_16 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_16.shp')
+grid_15 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_15.shp')
+grid_14 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_14.shp')
+
+grid_18$grid_id <- seq(1, nrow(grid_18))
+grid_17$grid_id <- seq(1, nrow(grid_17))
+grid_16$grid_id <- seq(1, nrow(grid_16))
+grid_15$grid_id <- seq(1, nrow(grid_15))
+grid_14$grid_id <- seq(1, nrow(grid_14))
 #grid <- st_transform(grid, crs = 4326)
-hexagons <- grid
+#hexagons <- grid
 
 filter_grid_pois <- function(london, districts, pois, hexagons) {
   
@@ -81,7 +90,7 @@ filter_movement_data <- function(movement_data, tiles, london_filtered, hexagons
   movement_join_within_hex <- st_join(movement_join_within, hexagons_intersects, join = st_within)
   hexagon_means <- movement_join_within_hex %>%
     group_by(grid_id) %>%
-    summarise(mean_value = mean_column)
+    summarise(mean_value = mean(mean_column, na.rm = TRUE))
   hexagon_means <- hexagon_means %>% st_drop_geometry()
   hexagons_with_means <- hexagons_intersects %>%
     left_join(hexagon_means, by = c("grid_id" = "grid_id"))
@@ -178,10 +187,16 @@ ui <- fluidPage(
     sidebarPanel(
       dateInput("selected_date", "Choose Date:", value = "2020-01-01"),
       dateInput("selected_date_2", "Choose another Date:", value = "2020-01-01"),
+      selectInput(
+        inputId = "grid_size",
+        label = "Grid Size:",
+        choices = c("1x1", "2x2", "4x4", "8x8", "16x16"),
+        selected = "1x1"
+      ),
       checkboxGroupInput("districts", "Choose districts:", 
                          choices = unique(london$district_n),
                          selected = c("City of London", "Westminster")),
-      #actionButton("select_all", "Select All"),
+      actionButton("select_all", "Select All"),
       actionButton("submit", "Update Map according first date"),
       actionButton("submit2", "Update Map according both dates")
     ),
@@ -194,17 +209,28 @@ ui <- fluidPage(
 #movement_data, tiles, london, pois, date, districts
 # define the server logic
 server <- function(input, output, session) {
-  # "Select All"-Button Logik
-  # observeEvent(input$select_all, {
-  #   updateCheckboxGroupInput(session, "districts", 
-  #                            selected = unique(london$district_n))  # Alle Districte auswählen
-  # })
+  #"Select All"-Button Logik
+  observeEvent(input$select_all, {
+    updateCheckboxGroupInput(session, "districts",
+                             selected = unique(london$district_n))  # Alle Districte auswählen
+  })
   
-  #Daten filtern nur bei Knopfdruck
+  
   
   # Define filtered data for submit
   filtered_data_single <- eventReactive(input$submit, {
     req(input$districts, input$selected_date)
+    if(input$grid_size == "1x1"){
+      hexagons <- grid_18
+    } else if(input$grid_size == "2x2"){
+      hexagons <- grid_17
+    } else if(input$grid_size == "4x4"){
+      hexagons <- grid_16
+    } else if(input$grid_size == "8x8"){
+      hexagons <- grid_15
+    } else if(input$grid_size == "16x16"){
+      hexagons <- grid_14
+    }
     calculate_one_date(
       movement_data = movement,
       tiles = tiles,
@@ -219,6 +245,17 @@ server <- function(input, output, session) {
   # Define filtered data for submit2
   filtered_data_compare <- eventReactive(input$submit2, {
     req(input$districts, input$selected_date, input$selected_date_2)
+    if(input$grid_size == "1x1"){
+      hexagons <- grid_18
+    } else if(input$grid_size == "2x2"){
+      hexagons <- grid_17
+    } else if(input$grid_size == "4x4"){
+      hexagons <- grid_16
+    } else if(input$grid_size == "8x8"){
+      hexagons <- grid_15
+    } else if(input$grid_size == "16x16"){
+      hexagons <- grid_14
+    }
     compare_dates(
       movement_data = movement,
       tiles = tiles,
@@ -356,5 +393,15 @@ shinyApp(ui = ui, server = server)
 
 
 #Tests
-result <- calculate_one_date(movement, tiles, london, pois, hexagons, "2020-03-23", c("City of London", "Westminster"))
+result <- calculate_one_date(movement, tiles, london, pois, grid_15, "2020-03-23", c("City of London", "Westminster"))
 result <- compare_dates(movement, tiles, london, pois, hexagons, "2020-03-23", "2020-04-06", c("City of London", "Westminster"))
+
+library(terra)
+
+# Aggregation: 2x2 Zellen zu einer
+r_agg <- aggregate(hexagons_with_means, fact=2, fun=mean)  # Hier Mittelwert (mean) als Aggregation
+
+# Ergebnis anzeigen
+plot(r, main="Original Raster")
+plot(r_agg, main="Aggregiertes Raster (4 Zellen -> 1)")
+print(values(r_agg))  # Werte des neuen Rasters
