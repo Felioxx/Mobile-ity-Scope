@@ -24,8 +24,9 @@ hexagons <- read_sf('hexgr.shp')
 london_filtered <- london[london$district_n %in% districts, ]
 
 
-movement$AGG_DAY_PERIOD <- as.Date(movement$AGG_DAY_PERIOD, format = "%Y-%m-%d")
-movement_filter <- filter(movement, AGG_DAY_PERIOD >= as.Date("2020-01-01") & AGG_DAY_PERIOD <= as.Date("2020-01-31"))
+#movement$AGG_DAY_PERIOD <- as.Date(movement$AGG_DAY_PERIOD, format = "%Y-%m-%d")
+#movement_filter <- filter(movement, AGG_DAY_PERIOD >= as.Date("2020-01-01") & AGG_DAY_PERIOD <= as.Date("2020-01-01"))
+movement_filter <- movement[movement$AGG_DAY_PERIOD == "2020-04-06",]
 movement_merge <- merge(movement_filter, tiles, by.x = "LONLAT_ID", by.y = "LONLAT_ID")
 movement_sf <- st_as_sf(movement_merge, coords = c("XLON", "XLAT"), crs = st_crs(london))
 # Get movement data which is within the given districts
