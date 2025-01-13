@@ -383,7 +383,9 @@ server <- function(input, output, session) {
       addLayersControl(
         overlayGroups = c("London", "Hexagons", "Movement Points", "Shops", "Museums"),
         options = layersControlOptions(collapsed = FALSE)
-      )
+      ) %>%
+      
+      hideGroup("Movement Points")
   })
 }
 
