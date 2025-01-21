@@ -1,4 +1,4 @@
-setwd("D:/Dokumente/Studium/9 FS/Study Project/Data")
+setwd("C:\\Users\\Anne\\Documents\\Studium\\9.Semester\\StudyProject\\Data")
 library(osmdata)
 library(sf)
 library(tmap)
@@ -10,24 +10,25 @@ library(dplyr)
 library(shiny)
 
 
-london<- read_sf('msoa2021/merged_districts.shp')
+london<- read_sf('merged_districts.shp')
 london <- st_transform(london, crs = 4326)
 movement <- read_parquet("pre_processed_movement.parquet")
 tiles <- read_parquet("distinct_LONLAT.parquet")
 #pois <- read.csv("D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/first_steps_python/attractionsGreaterLondon.csv")
-shops <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/POIs/shops.shp')
-museums <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/POIs/museums.shp')
+
+shops <- read_sf('shops.shp')
+museums <- read_sf('museums.shp')
 shops$type <- "shop"
 museums$type <- "museum"
 pois <- rbind(shops, museums)
 
 #hexagons <- read_sf('hexgr_2.shp')
 
-grid_18 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_18.shp')
-grid_17 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_17.shp')
-grid_16 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_16.shp')
-grid_15 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_15.shp')
-grid_14 <- read_sf('D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/grids/grids_14.shp')
+grid_18 <- read_sf('grids_18.shp')
+grid_17 <- read_sf('grids_17.shp')
+grid_16 <- read_sf('grids_16.shp')
+grid_15 <- read_sf('grids_15.shp')
+grid_14 <- read_sf('grids_14.shp')
 
 grid_18$grid_id <- seq(1, nrow(grid_18))
 grid_17$grid_id <- seq(1, nrow(grid_17))
@@ -162,10 +163,16 @@ compare_dates <- function(movement_data, tiles, london, pois, hexagons, date1, d
   merged_movement <- st_as_sf(merged_movement, coords = c("new_X", "new_Y"), crs = st_crs(london))
   
   # Differenz der Mittelwerte berechnen
+  #merged_hexagons <- merged_hexagons %>%
+  #  mutate(mean_value_diff = ifelse(is.na(mean_value_1) | is.na(mean_value_2), NA, mean_value_1 - mean_value_2))
+  #merged_movement <- merged_movement %>%
+  #  mutate(mean_column_diff = ifelse(is.na(mean_column_1) | is.na(mean_column_2), NA, mean_column_1 - mean_column_2))
+  
+  # Prozentualen Anteil berechnen
   merged_hexagons <- merged_hexagons %>%
-    mutate(mean_value_diff = ifelse(is.na(mean_value_1) | is.na(mean_value_2), NA, mean_value_1 - mean_value_2))
+    mutate(mean_value_diff = ifelse(is.na(mean_value_1) | is.na(mean_value_2), NA, round(((mean_value_2/mean_value_1)-1) *100,2)))
   merged_movement <- merged_movement %>%
-    mutate(mean_column_diff = ifelse(is.na(mean_column_1) | is.na(mean_column_2), NA, mean_column_1 - mean_column_2))
+    mutate(mean_column_diff = ifelse(is.na(mean_column_1) | is.na(mean_column_2), NA, round(((mean_column_2/mean_column_1)-1) *100,2)))
   
   # Ergebnis in die Struktur von hexagons1 übertragen
   result_hexagons <- merged_hexagons %>%
@@ -185,8 +192,8 @@ ui <- fluidPage(
   titlePanel("Mobility Scope"),
   sidebarLayout(
     sidebarPanel(
-      dateInput("selected_date", "Choose Date:", value = "2020-01-01"),
-      dateInput("selected_date_2", "Choose another Date:", value = "2020-01-01"),
+      dateInput("selected_date", "Choose a Day:", value = "2020-01-01"),
+      dateInput("selected_date_2", "Choose a Day you want to compare:", value = "2020-01-01"),
       selectInput(
         inputId = "grid_size",
         label = "Grid Size:",
@@ -295,11 +302,22 @@ server <- function(input, output, session) {
     max <- max(data$hexagons_with_means$mean_value, na.rm = TRUE)
     
     my_domain <- c(min, max)
-    fixed_bin_scale <- colorBin(
-      palette = c("blue", "red"),  # Farbpalette von Blau bis Rot
-      domain = my_domain,
-      bins = 7
-    )
+    
+    if (input$submit2 > input$submit) {
+      fixed_bin_scale <- colorBin(palette = c("blue","cyan","white", "yellow","red"), 
+                                  domain=c(-500,0-.Machine$double.eps,0,0+.Machine$double.eps,500))
+      legendTitle <- "Relative Change in %"
+      popuptxt = "Change (%):"
+    }
+    else {
+      fixed_bin_scale <- colorBin(
+        palette = c("blue", "red"),  # Farbpalette von Blau bis Rot
+        domain = my_domain,
+        bins = 7
+      )
+      legendTitle <- "Mean Activity Value"
+      popuptxt = "Mean Activity Value:"
+    }
     
     # Karte aktualisieren
     leafletProxy("map") %>%
@@ -368,14 +386,14 @@ server <- function(input, output, session) {
                   weight = 1,
                   fillColor = ~fixed_bin_scale(mean_value),
                   fillOpacity = 0.7,
-                  popup = ~paste("Mean Column:", mean_value),
+                  popup = ~paste(popuptxt, round(mean_value,2)),
                   group = "Hexagons") %>%
       
       addLegend(
         position = "bottomright",
         pal = fixed_bin_scale,
         values = my_domain,
-        title = "Mean Column",
+        title = legendTitle,
         opacity = 1
       ) %>%
       
