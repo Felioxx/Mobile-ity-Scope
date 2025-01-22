@@ -1,4 +1,4 @@
-setwd("C:\\Users\\Anne\\Documents\\Studium\\9.Semester\\StudyProject\\Data")
+setwd("D:/Dokumente/Studium/9 FS/Study Project/Data")
 library(osmdata)
 library(sf)
 library(tmap)
@@ -8,27 +8,41 @@ library(leaflet)
 library(leaflet.extras)
 library(dplyr)
 library(shiny)
+library(plotly)
+library(shinycssloaders)
+library(shinyWidgets)
 
+# define loader
+options(page.spinner.type = 1)
+options(page.spinner.caption = "Your map is being calculated :)")
+options(page.spinner.color = "orange")
 
-london<- read_sf('merged_districts.shp')
+london<- read_sf('msoa2021/merged_districts.shp')
 london <- st_transform(london, crs = 4326)
+london <- london %>%
+  group_by(district_n) %>%
+  summarise(
+    geometry = st_union(geometry)
+  )
 movement <- read_parquet("pre_processed_movement.parquet")
 tiles <- read_parquet("distinct_LONLAT.parquet")
-#pois <- read.csv("D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope/first_steps_python/attractionsGreaterLondon.csv")
-
-shops <- read_sf('shops.shp')
-museums <- read_sf('museums.shp')
+#pois <- read.csv("../Mobile-ity-Scope/first_steps_python/attractionsGreaterLondon.csv")
+shops <- read_sf('../Mobile-ity-Scope/POIs/shops.shp')
+museums <- read_sf('../Mobile-ity-Scope/POIs/museums.shp')
 shops$type <- "shop"
 museums$type <- "museum"
 pois <- rbind(shops, museums)
+coords <- st_coordinates(pois)
+pois <- pois %>%
+  mutate(lon = coords[, 1], lat = coords[, 2])
 
 #hexagons <- read_sf('hexgr_2.shp')
 
-grid_18 <- read_sf('grids_18.shp')
-grid_17 <- read_sf('grids_17.shp')
-grid_16 <- read_sf('grids_16.shp')
-grid_15 <- read_sf('grids_15.shp')
-grid_14 <- read_sf('grids_14.shp')
+grid_18 <- read_sf('../Mobile-ity-Scope/grids/grids_18.shp')
+grid_17 <- read_sf('../Mobile-ity-Scope/grids/grids_17.shp')
+grid_16 <- read_sf('../Mobile-ity-Scope/grids/grids_16.shp')
+grid_15 <- read_sf('../Mobile-ity-Scope/grids/grids_15.shp')
+grid_14 <- read_sf('../Mobile-ity-Scope/grids/grids_14.shp')
 
 grid_18$grid_id <- seq(1, nrow(grid_18))
 grid_17$grid_id <- seq(1, nrow(grid_17))
@@ -187,46 +201,125 @@ compare_dates <- function(movement_data, tiles, london, pois, hexagons, date1, d
     hexagons_with_means = result_hexagons))
 }
 
+calculate_movement_mean <- function(poi_name, buffer_size = 100) {
+  # Function for line graph
+  poi_filter <- pois %>% filter(name == poi_name)
+  poi_buffer <- st_buffer(poi_filter, buffer_size)
+  
+  tiles_indices <- st_within(tiles_sf, poi_buffer, sparse = FALSE)
+  tiles_within <- tiles_sf[apply(tiles_indices, 1, any), ]
+  
+  movement_merge <- merge(
+    movement, 
+    tiles_within, 
+    by.x = "LONLAT_ID", 
+    by.y = "LONLAT_ID"
+  )
+  movement_merge %>%
+    group_by(AGG_DAY_PERIOD, POI = poi_name) %>%
+    summarise(mean_value = mean(mean_column, na.rm = TRUE)) %>%
+    mutate(AGG_DAY_PERIOD = as.Date(AGG_DAY_PERIOD))
+}
+
+# Calculations for line graph. Attention: It will take some time!
+movement_data <- do.call(
+  rbind,
+  lapply(unique(pois$name), calculate_movement_mean)
+)
+movement_data <- movement_data %>%
+  left_join(pois %>% select(name, type), by = c("POI" = "name"))
+movement_data <- movement_data %>%
+  mutate(weekday = weekdays(AGG_DAY_PERIOD))
+
 # define the user interface
 ui <- fluidPage(
   titlePanel("Mobility Scope"),
-  sidebarLayout(
-    sidebarPanel(
-      dateInput("selected_date", "Choose a Day:", value = "2020-01-01"),
-      dateInput("selected_date_2", "Choose a Day you want to compare:", value = "2020-01-01"),
-      selectInput(
-        inputId = "grid_size",
-        label = "Grid Size:",
-        choices = c("1x1", "2x2", "4x4", "8x8", "16x16"),
-        selected = "1x1"
-      ),
-      checkboxGroupInput("districts", "Choose districts:", 
-                         choices = unique(london$district_n),
-                         selected = c("City of London", "Westminster")),
-      actionButton("select_all", "Select All"),
-      actionButton("submit", "Update Map according first date"),
-      actionButton("submit2", "Update Map according both dates")
-    ),
-    mainPanel(
-      leafletOutput("map", height = 600)
+    tabsetPanel(
+      tabPanel("Map", 
+        sidebarLayout(
+          sidebarPanel(
+            dateInput("selected_date", "Choose a Day:", value = "2020-01-01"),
+            dateInput("selected_date_2", "Choose a Day you want to compare:", value = "2020-01-01"),
+            selectInput(
+              inputId = "grid_size",
+              label = "Grid Size:",
+              choices = c("1x1", "2x2", "4x4", "8x8", "16x16"),
+              selected = "1x1"
+            ),
+            dropdownButton(
+              circle = F,
+              label = "Select Districts",
+              status = "default", 
+              width = 450,
+              tags$label("Choose:"),
+              fluidRow(
+                column(
+                  width = 4,
+                  checkboxGroupInput(
+                    inputId = "districtsA",
+                    label = NULL,
+                    choices = unique(london$district_n)[1:11],
+                    selected = c("City of London")
+                  )
+                ),
+                column(
+                  width = 4,
+                  checkboxGroupInput(
+                    inputId = "districtsB",
+                    label = NULL,
+                    choices = unique(london$district_n)[12:22],
+                    selected = c()
+                  )
+                ),
+                column(
+                  width = 4,
+                  checkboxGroupInput(
+                    inputId = "districtsC",
+                    label = NULL,
+                    choices = unique(london$district_n)[23:33],
+                    selected = c("Westminster")
+                  )
+                )
+              )
+            ),
+            div(style="margin-bottom:10px"),
+            actionButton("select_all", "Select All"),
+            div(style="margin-bottom:10px"),
+            actionButton("submit", "Update Map according to first date"),
+            div(style="margin-bottom:10px"),
+            actionButton("submit2", "Update Map according to both dates"),
+          ),
+          mainPanel(
+              leafletOutput("map", height = 600)
+            ),
+          ),
+        ),
+      tabPanel("Plot", 
+        plotlyOutput("linePlot")
+      )
     )
   )
-)
+
 
 #movement_data, tiles, london, pois, date, districts
 # define the server logic
 server <- function(input, output, session) {
   #"Select All"-Button Logik
   observeEvent(input$select_all, {
-    updateCheckboxGroupInput(session, "districts",
-                             selected = unique(london$district_n))  # Alle Districte auswählen
+    updateCheckboxGroupInput(session, "districtsA",
+                             selected = unique(london$district_n)[1:11])
+    updateCheckboxGroupInput(session, "districtsB",
+                             selected = unique(london$district_n)[12:22])
+    updateCheckboxGroupInput(session, "districtsC",
+                             selected = unique(london$district_n)[23:33])
   })
   
   
   
   # Define filtered data for submit
   filtered_data_single <- eventReactive(input$submit, {
-    req(input$districts, input$selected_date)
+    showPageSpinner()
+    req(c(input$districtsA, input$districtsB, input$districtsC), input$selected_date)
     if(input$grid_size == "1x1"){
       hexagons <- grid_18
     } else if(input$grid_size == "2x2"){
@@ -245,13 +338,14 @@ server <- function(input, output, session) {
       pois = pois,
       hexagons = hexagons,
       date = as.character(input$selected_date),
-      districts = input$districts
+      districts = c(input$districtsA, input$districtsB, input$districtsC)
     )
   })
   
   # Define filtered data for submit2
   filtered_data_compare <- eventReactive(input$submit2, {
-    req(input$districts, input$selected_date, input$selected_date_2)
+    showPageSpinner()
+    req(c(input$districtsA, input$districtsB, input$districtsC), input$selected_date, input$selected_date_2)
     if(input$grid_size == "1x1"){
       hexagons <- grid_18
     } else if(input$grid_size == "2x2"){
@@ -271,7 +365,7 @@ server <- function(input, output, session) {
       hexagons = hexagons,
       date1 = as.character(input$selected_date),
       date2 = as.character(input$selected_date_2),
-      districts = input$districts
+      districts = c(input$districtsA, input$districtsB, input$districtsC)
     )
   })
   
@@ -288,14 +382,81 @@ server <- function(input, output, session) {
   output$map <- renderLeaflet({
     leaflet() %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
-      setView(lng = -0.1, lat = 51.5, zoom = 12)
+      setView(lng = -0.1, lat = 51.5, zoom = 12) %>%
+    # POIs
+    addAwesomeMarkers(
+      data = pois[pois$type == "shop", ],
+      lng = ~lon, lat = ~lat,
+      popup = ~paste("Name:", name),
+      group = "Shops",
+      icon=awesomeIcons(
+        icon = 'fa-shopping-cart',
+        iconColor = 'black',
+        library = 'fa',
+        markerColor = "green"
+      )) %>%
+      
+      addAwesomeMarkers(
+        data = pois[pois$type == "museum", ],
+        lng = ~lon, lat = ~lat,
+        popup = ~paste("Name:", name),
+        group = "Museums",
+        icon=awesomeIcons(
+          icon = 'ion-android-color-palette',
+          iconColor = 'black',
+          library = 'ion',
+          markerColor = "orange"
+        )) %>%
+      
+      # London-Polygon
+      addPolygons(
+        data = london,
+        color = "black",
+        weight = 2,
+        fillOpacity = 0.1,
+        group = "London",
+        label = ~district_n,
+        highlight = highlightOptions(
+          weight = 5,
+          color = "blue",
+          bringToFront = TRUE
+        )
+      ) %>%
+      
+      # Layers control
+      addLayersControl(
+        overlayGroups = c("London", "Hexagons", "Movement Points", "Shops", "Museums"),
+        options = layersControlOptions(collapsed = FALSE)
+      ) 
   })
   
+  output$linePlot <- renderPlotly({
+    # Big plotly map
+    p <- ggplot(movement_data, aes(x = AGG_DAY_PERIOD, y = mean_value, color = POI, text = paste("Type:", type, sep=" "))) +
+      geom_vline(data = subset(movement_data, weekday == "Sonntag"), 
+                 aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
+                 color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+      geom_vline(data = subset(movement_data, weekday == "Samstag"), 
+                 aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
+                 color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+      geom_line() +
+      labs(
+        title = "Activity Trends Across POIs. Weekends are highlighted.",
+        x = "Date",
+        y = "Activity",
+        color = "POI"
+      ) +
+      theme_minimal()
+    
+    ggplotly(p) %>%
+      layout(legend = list(orientation = "h", x = 0, y = -0.2))
+  })
+
   # Karte aktualisieren, wenn sich die gefilterten Daten ändern
   observe({
     print(paste("Chosen Date:", input$selected_date))
     print(paste("Chosen Date2:", input$selected_date_2))
-    print(paste("Chosen Districts:", paste(input$districts, collapse = ", ")))
+    print(paste("Chosen Districts:", paste(c(input$districtsA, input$districtsB, input$districtsC), collapse = ", ")))
     data <- filtered_data()
     
     min <- min(data$hexagons_with_means$mean_value, na.rm = TRUE)
@@ -366,7 +527,13 @@ server <- function(input, output, session) {
         color = "black",
         weight = 2,
         fillOpacity = 0.1,
-        group = "London"
+        group = "London",
+        label = ~district_n,
+        highlight = highlightOptions(
+          weight = 5,
+          color = "blue",
+          bringToFront = TRUE
+        )
       ) %>%
       
       # Punkte
@@ -404,6 +571,8 @@ server <- function(input, output, session) {
       ) %>%
       
       hideGroup("Movement Points")
+    
+    hidePageSpinner()
   })
 }
 
@@ -416,12 +585,3 @@ shinyApp(ui = ui, server = server)
 result <- calculate_one_date(movement, tiles, london, pois, grid_15, "2020-03-23", c("City of London", "Westminster"))
 result <- compare_dates(movement, tiles, london, pois, hexagons, "2020-03-23", "2020-04-06", c("City of London", "Westminster"))
 
-library(terra)
-
-# Aggregation: 2x2 Zellen zu einer
-r_agg <- aggregate(hexagons_with_means, fact=2, fun=mean)  # Hier Mittelwert (mean) als Aggregation
-
-# Ergebnis anzeigen
-plot(r, main="Original Raster")
-plot(r_agg, main="Aggregiertes Raster (4 Zellen -> 1)")
-print(values(r_agg))  # Werte des neuen Rasters
