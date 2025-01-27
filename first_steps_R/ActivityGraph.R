@@ -13,6 +13,11 @@ library(lubridate)
 
 london<- read_sf('msoa2021/merged_districts.shp')
 london <- st_transform(london, crs = 4326)
+london <- london %>%
+  group_by(district_n) %>%
+  summarise(
+    geometry = st_union(geometry)
+  )
 movement <- read_parquet("pre_processed_movement.parquet")
 tiles <- read_parquet("distinct_LONLAT.parquet")
 tiles_sf <- st_as_sf(tiles, coords = c("XLON", "XLAT"), crs = 4326)
@@ -59,8 +64,21 @@ movement_data <- movement_data %>%
 movement_data <- movement_data %>%
   mutate(weekday = weekdays(AGG_DAY_PERIOD))
 
-filter <- movement_data %>%
-  filter(POI == "MCC Museum and Tour")
+#filter <- movement_data %>%
+#  filter(POI == "MCC Museum and Tour")
+
+events <- data.frame(
+  Date = as.Date(c("2020-02-12", "2020-03-17", "2020-03-23", "2020-04-15", "2020-06-01", "2020-09-22", "2020-11-04")),
+  Event = c(
+    "First Corona Case", 
+    "Reduced Service of the London Underground", 
+    "Lockdown",
+    "Extension of lockdown",
+    "Outdoor markets and gatherings of up to six people with two-meter distancing are permitted",
+    "Prime Minister Boris Johnson announced new restrictions on everyday life",
+    "Partial lockdown"
+    )
+)
 
 # Big plotly map
 p <- ggplot(movement_data, aes(x = AGG_DAY_PERIOD, y = mean_value, color = POI, text = paste("Type:", type, sep=" "))) +
@@ -70,14 +88,21 @@ p <- ggplot(movement_data, aes(x = AGG_DAY_PERIOD, y = mean_value, color = POI, 
   geom_vline(data = subset(movement_data, weekday == "Samstag"), 
              aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
              color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+  geom_vline(data = events, aes(xintercept = as.numeric(Date)), 
+             color = "red", linetype = "solid", linewidth = 0.5) +
   geom_line() +
   labs(
-    title = "Activity Trends Across POIs. Sundays are highlighted.",
+    title = "Activity Trends Across POIs. Weekends are highlighted in grey.",
     x = "Date",
     y = "Activity",
     color = "POI"
   ) +
   theme_minimal()
+
+# Konvertiere zu Plotly und passe die Legenden-Position an
+ggplotly(p) %>%
+  layout(legend = list(orientation = "h", x = 0, y = -0.2))
+
 
 ggplotly(p) %>%
   layout(legend = list(orientation = "h", x = 0, y = -0.2))
@@ -142,15 +167,39 @@ aggregated_data <- movement_data %>%
   group_by(AGG_DAY_PERIOD, category = type) %>% # Gruppierung nach Typ
   summarise(mean_activity = mean(mean_value, na.rm = TRUE))
 
-ggplot(aggregated_data, aes(x = AGG_DAY_PERIOD, y = mean_activity, color = category)) +
+p <- ggplot(aggregated_data, aes(x = AGG_DAY_PERIOD, y = mean_activity, color = category)) +
+  geom_vline(data = subset(movement_data, weekday == "Sonntag"), 
+             aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
+             color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+  geom_vline(data = subset(movement_data, weekday == "Samstag"), 
+             aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
+             color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+  geom_vline(data = events, aes(xintercept = as.numeric(Date)), 
+             color = "red", linetype = "solid", linewidth = 0.5) +
   geom_line() +
   labs(
-    title = "Activity Trends by Category",
+    title = "Activity Trends by Category. Weekends are highlighted in grey.",
     x = "Date",
     y = "Average Activity",
     color = "Category"
   ) +
   theme_minimal()
+
+ggplotly(p) %>%
+  layout(legend = list(orientation = "h", x = 0, y = -1), 
+         height = 800, 
+         annotations = list(
+           list(
+             x = 0.5,
+             y = -0.7,
+             text = annotation_text, 
+             showarrow = FALSE,
+             xref = "paper", 
+             yref = "paper",
+             font = list(size = 10),  # Schriftgröße
+             align = "left"  # Text linksbündig ausrichten
+           )
+         ))
 
 
 # Shiny App with one POI

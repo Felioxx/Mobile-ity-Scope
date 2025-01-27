@@ -52,6 +52,24 @@ grid_14$grid_id <- seq(1, nrow(grid_14))
 #grid <- st_transform(grid, crs = 4326)
 #hexagons <- grid
 
+events <- data.frame(
+  Date = as.Date(c("2020-02-12", "2020-03-17", "2020-03-23", "2020-04-15", "2020-06-01", "2020-09-22", "2020-11-04")),
+  Event = c(
+    "First Corona Case", 
+    "Reduced Service of the London Underground", 
+    "Lockdown",
+    "Extension of lockdown",
+    "Outdoor markets and gatherings of up to six people with two-meter distancing are permitted",
+    "Prime Minister Boris Johnson announced new restrictions on everyday life",
+    "Partial lockdown"
+  )
+)
+
+annotation_text <- paste0(
+  "Events:<br>",
+  paste(paste(events$Date, events$Event, sep = " - "), collapse = "<br>")
+)
+
 filter_grid_pois <- function(london, districts, pois, hexagons) {
   
   # Filter districts
@@ -230,6 +248,7 @@ movement_data <- movement_data %>%
   left_join(pois %>% select(name, type), by = c("POI" = "name"))
 movement_data <- movement_data %>%
   mutate(weekday = weekdays(AGG_DAY_PERIOD))
+#save(movement_data, file = "movement_data.RData")
 
 # define the user interface
 ui <- fluidPage(
@@ -296,6 +315,9 @@ ui <- fluidPage(
         ),
       tabPanel("Plot", 
         plotlyOutput("linePlot")
+      ),
+      tabPanel("Plot Aggregated", 
+        plotlyOutput("linePlot_aggregated")
       )
     )
   )
@@ -439,19 +461,75 @@ server <- function(input, output, session) {
       geom_vline(data = subset(movement_data, weekday == "Samstag"), 
                  aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
                  color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+      geom_vline(data = events, aes(xintercept = as.numeric(Date)), 
+                 color = "red", linetype = "solid", linewidth = 0.5) +
       geom_line() +
       labs(
         title = "Activity Trends Across POIs. Weekends are highlighted.",
-        x = "Date",
+        x = "",
         y = "Activity",
         color = "POI"
       ) +
       theme_minimal()
     
     ggplotly(p) %>%
-      layout(legend = list(orientation = "h", x = 0, y = -0.2))
+      layout(legend = list(orientation = "h", x = 0, y = -1), 
+             height = 800, 
+             annotations = list(
+                list(
+                  x = 0.5,
+                  y = -0.7,
+                  text = annotation_text, 
+                  showarrow = FALSE,
+                  xref = "paper", 
+                  yref = "paper",
+                  font = list(size = 10),  # Schriftgröße
+                  align = "left"  # Text linksbündig ausrichten
+                )
+      ))
+  })
+  
+  output$linePlot_aggregated <- renderPlotly({
+    aggregated_data <- movement_data %>%
+      group_by(AGG_DAY_PERIOD, category = type) %>% # Gruppierung nach Typ
+      summarise(mean_activity = mean(mean_value, na.rm = TRUE))
+    
+    p <- ggplot(aggregated_data, aes(x = AGG_DAY_PERIOD, y = mean_activity, color = category)) +
+      geom_vline(data = subset(movement_data, weekday == "Sonntag"), 
+                 aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
+                 color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+      geom_vline(data = subset(movement_data, weekday == "Samstag"), 
+                 aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
+                 color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+      geom_vline(data = events, aes(xintercept = as.numeric(Date)), 
+                 color = "red", linetype = "solid", linewidth = 0.5) +
+      geom_line() +
+      labs(
+        title = "Activity Trends by Category. Weekends are highlighted in grey.",
+        x = "Date",
+        y = "Average Activity",
+        color = "Category"
+      ) +
+      theme_minimal()
+    
+    ggplotly(p) %>%
+      layout(legend = list(orientation = "h", x = 0, y = -1), 
+             height = 800, 
+             annotations = list(
+               list(
+                 x = 0.5,
+                 y = -0.7,
+                 text = annotation_text, 
+                 showarrow = FALSE,
+                 xref = "paper", 
+                 yref = "paper",
+                 font = list(size = 10),  # Schriftgröße
+                 align = "left"  # Text linksbündig ausrichten
+               )
+             ))
   })
 
+  
   # Karte aktualisieren, wenn sich die gefilterten Daten ändern
   observe({
     print(paste("Chosen Date:", input$selected_date))
