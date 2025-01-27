@@ -1,4 +1,4 @@
-setwd("C:/Users/Anne/Documents/Studium/9.Semester/StudyProject")
+setwd("C:\\Users\\Anne\\Documents\\Studium\\9.Semester\\StudyProject\\Data")
 
 install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
 library(spdep) |> suppressPackageStartupMessages()
@@ -15,15 +15,15 @@ library(tibbletime)
 
 movement <- read_parquet("pre_processed_movement.parquet")
 tiles <- read_parquet("distinct_LONLAT.parquet")
-london<- read_sf('Mobile-ity-Scope/Districts/merged_districts.shp')
+london<- read_sf('merged_districts.shp')
 london <- st_transform(london, crs = 4326)
 districts <- c("City of London", "Westminster")
-hexagons <- read_sf('Mobile-ity-Scope/grids/grids_18.shp')
+hexagons <- read_sf('grids_18.shp')
 london_filtered <- london[london$district_n %in% districts, ]
 
 
 movement$AGG_DAY_PERIOD <- as.Date(movement$AGG_DAY_PERIOD, format = "%Y-%m-%d")
-movement_filter <- filter(movement, AGG_DAY_PERIOD >= as.Date("2020-01-01") & AGG_DAY_PERIOD <= as.Date("2020-01-31"))
+movement_filter <- filter(movement, AGG_DAY_PERIOD >= as.Date("2020-01-28") & AGG_DAY_PERIOD <= as.Date("2020-01-29"))
 movement_merge <- merge(movement_filter, tiles, by.x = "LONLAT_ID", by.y = "LONLAT_ID")
 movement_sf <- st_as_sf(movement_merge, coords = c("XLON", "XLAT"), crs = st_crs(london))
 # Get movement data which is within the given districts
@@ -52,7 +52,7 @@ glance_htest <- function(ht) c(ht$estimate,
 
 # select a time span
 movement <-as_tbl_time(movement, index = AGG_DAY_PERIOD)
-movement_filter_span <- filter_time(movement, time_formula = '2020-03-01' ~ '2020-03-31')
+movement_filter_span <- filter_time(movement, time_formula = '2020-01-28' ~ '2020-01-29')
 movement_dates <- movement_filter_span[!duplicated(movement_filter_span$AGG_DAY_PERIOD), ]
 
 
@@ -189,15 +189,17 @@ spots <- function(grid_means, date) {
   t(rbind("Moran plot quadrants" = mov_a, "Analytical cond." = mov_b))
   
   grid_with_means$hs_an_q <- droplevels(grid_with_means$hs_an_q)
-  
+  test <<- grid_with_means
+  return(test)
+  write.csv(grid_with_means, file = "grid_with_means.csv")
 spots_plot <-  tm_shape(grid_with_means) +
     tm_fill(c("hs_an_q"),
             colorNA = "grey95", textNA="Not \"interesting\"",
             title = "Turnout hotspot status \nLocal Moran's I",
             palette = RColorBrewer::brewer.pal(4, "Set3")[-c(2,3)]) +
     tm_layout(panel.labels = c("Analytical conditional"))
-  name =paste("Januar/",date, ".png", sep="")
+  name =paste("test/",date, ".png", sep="")
   tmap_save(spots_plot, name)
-  
+
 print("end spots")
 }
