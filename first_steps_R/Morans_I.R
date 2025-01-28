@@ -1,4 +1,4 @@
-setwd("D:/Dokumente/Studium/9 FS/Study Project/Data")
+setwd("C:\\Users\\Anne\\Documents\\Studium\\9.Semester\\StudyProject\\Data")
 
 install.packages("spDataLarge", repos = "https://nowosad.github.io/drat/", type = "source")
 library(spdep) |> suppressPackageStartupMessages()
@@ -17,10 +17,10 @@ acf(ldeaths)
 
 movement <- read_parquet("pre_processed_movement.parquet")
 tiles <- read_parquet("distinct_LONLAT.parquet")
-london<- read_sf('msoa2021/merged_districts.shp')
+london<- read_sf('merged_districts.shp')
 london <- st_transform(london, crs = 4326)
 districts <- c("City of London", "Westminster")
-hexagons <- read_sf('hexgr.shp')
+hexagons <- read_sf('grids_18.shp')
 london_filtered <- london[london$district_n %in% districts, ]
 
 
