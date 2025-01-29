@@ -10,6 +10,8 @@ library(dplyr)
 library(shiny)
 library(plotly)
 library(lubridate)
+library(tidyr)
+library(patchwork)
 
 london<- read_sf('msoa2021/merged_districts.shp')
 london <- st_transform(london, crs = 4326)
@@ -55,6 +57,7 @@ movement_data <- do.call(
   rbind,
   lapply(unique(pois$name), calculate_movement_mean)
 )
+#save(movement_data, file = "movement_data.RData")
 
 # Join durchführen
 movement_data <- movement_data %>%
@@ -103,9 +106,34 @@ p <- ggplot(movement_data, aes(x = AGG_DAY_PERIOD, y = mean_value, color = POI, 
 ggplotly(p) %>%
   layout(legend = list(orientation = "h", x = 0, y = -0.2))
 
+# Bewegung Daten nach drei POIs filtern
+filtered_movement_data <- movement_data %>%
+  filter(POI %in% pois_with_increase_names)
 
+# Gefilterte Daten plotten
+p <- ggplot(filtered_movement_data, aes(x = AGG_DAY_PERIOD, y = mean_value, color = POI, text = paste("Type:", type, sep=" "))) +
+  geom_vline(data = subset(filtered_movement_data, weekday == "Sonntag"), 
+             aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
+             color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+  geom_vline(data = subset(filtered_movement_data, weekday == "Samstag"), 
+             aes(xintercept = as.numeric(AGG_DAY_PERIOD)), 
+             color = "lightgrey", linetype = "solid", linewidth = 1.2) +
+  geom_vline(data = events, aes(xintercept = as.numeric(Date)), 
+             color = "red", linetype = "solid", linewidth = 0.5) +
+  geom_line() +
+  ylim(0, 3) +
+  labs(
+    title = "Activity Trends Across Selected POIs. Weekends are highlighted in grey.",
+    x = "Date",
+    y = "Activity",
+    color = "POI"
+  ) +
+  theme_minimal()
+
+# Konvertiere zu Plotly und passe die Legenden-Position an
 ggplotly(p) %>%
   layout(legend = list(orientation = "h", x = 0, y = -0.2))
+
 
 # FIlter only one type
 filtered_data <- movement_data %>%
@@ -200,6 +228,232 @@ ggplotly(p) %>%
              align = "left"  # Text linksbündig ausrichten
            )
          ))
+
+
+
+
+# Analysis with mean values
+# Zeiträume definieren
+lockdown_start <- as.Date("2020-03-23")
+lockdown_end <- as.Date("2020-06-01")
+partial_lockdown_start <- as.Date("2020-11-04")
+
+# Daten filtern und Zeiträume markieren
+movement_data <- movement_data %>%
+  mutate(
+    period = case_when(
+      AGG_DAY_PERIOD < lockdown_start ~ "Before_Lockdown",
+      AGG_DAY_PERIOD >= lockdown_start & AGG_DAY_PERIOD <= lockdown_end ~ "Lockdown",
+      AGG_DAY_PERIOD > lockdown_end & AGG_DAY_PERIOD < partial_lockdown_start ~ "Post_Lockdown",
+      AGG_DAY_PERIOD >= partial_lockdown_start ~ "Partial_Lockdown",
+      TRUE ~ "Other"
+    )
+  )
+
+# Durchschnitt für jeden Zeitraum berechnen
+mean_values <- movement_data %>%
+  group_by(period, POI, type) %>%
+  summarise(
+    mean_activity = mean(mean_value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Daten in breites Format bringen
+mean_values_wide <- mean_values %>%
+  pivot_wider(names_from = period, values_from = mean_activity, 
+              names_prefix = "mean_")
+
+# Prozentuale Veränderungen zwischen benachbarten Zeiträumen berechnen
+mean_values_wide <- mean_values_wide %>%
+  mutate(
+    change_Before_to_Lockdown = (mean_Lockdown - mean_Before_Lockdown) / mean_Before_Lockdown * 100,
+    change_Lockdown_to_Post = (mean_Post_Lockdown - mean_Lockdown) / mean_Lockdown * 100,
+    change_Post_to_Partial = (mean_Partial_Lockdown - mean_Post_Lockdown) / mean_Post_Lockdown * 100
+  )
+
+# Veränderungskategorien hinzufügen
+mean_values_wide <- mean_values_wide %>%
+  mutate(
+    category_Before_to_Lockdown = case_when(
+      abs(change_Before_to_Lockdown) < 5 ~ "No Significant Change",
+      change_Before_to_Lockdown > 50 ~ "High Increase",
+      change_Before_to_Lockdown < -50 ~ "High Decrease",
+      change_Before_to_Lockdown > 0 ~ "Moderate Increase",
+      TRUE ~ "Moderate Decrease"
+    ),
+    category_Lockdown_to_Post = case_when(
+      abs(change_Lockdown_to_Post) < 5 ~ "No Significant Change",
+      change_Lockdown_to_Post > 50 ~ "High Increase",
+      change_Lockdown_to_Post < -50 ~ "High Decrease",
+      change_Lockdown_to_Post > 0 ~ "Moderate Increase",
+      TRUE ~ "Moderate Decrease"
+    ),
+    category_Post_to_Partial = case_when(
+      abs(change_Post_to_Partial) < 5 ~ "No Significant Change",
+      change_Post_to_Partial > 50 ~ "High Increase",
+      change_Post_to_Partial < -50 ~ "High Decrease",
+      change_Post_to_Partial > 0 ~ "Moderate Increase",
+      TRUE ~ "Moderate Decrease"
+    )
+  )
+
+# Daten für den Plot vorbereiten
+# plot_data <- mean_values_wide %>%
+#   select(POI, starts_with("change_")) %>%
+#   pivot_longer(
+#     cols = starts_with("change_"),
+#     names_to = "comparison",
+#     values_to = "relative_change"
+#   )
+# Plot erstellen
+# ggplot(plot_data, aes(x = reorder(POI, relative_change), y = relative_change, fill = comparison)) +
+#   geom_bar(stat = "identity", position = "dodge") +
+#   coord_flip() +
+#   labs(
+#     title = "Prozentuale Veränderungen der Aktivität nach POI",
+#     x = "POI",
+#     y = "Relative Veränderung (%)",
+#     fill = "Vergleich"
+#   ) +
+#   theme_minimal()
+
+# Daten von wide nach long transformieren, um Kategorien darzustellen
+plot_data_categories <- mean_values_wide %>%
+  select(POI, type, category_Before_to_Lockdown, category_Lockdown_to_Post, category_Post_to_Partial) %>%
+  pivot_longer(
+    cols = starts_with("category_"),
+    names_to = "comparison",
+    values_to = "category"
+  )
+
+plot_data_categories <- plot_data_categories %>%
+  mutate(category = factor(category, levels = c(
+    "High Increase",
+    "Moderate Increase",
+    "No Significant Change",
+    "Moderate Decrease",
+    "High Decrease"
+  )))
+
+# Daten für 'shop'
+plot_data_shop <- plot_data_categories %>% filter(type == "shop")
+
+# Daten für 'museum' und in zwei Gruppen aufteilen
+plot_data_museum <- plot_data_categories %>% filter(type == "museum") %>%
+  mutate(group = ntile(row_number(), 2)) # Teilt die Museen in zwei Gruppen
+
+# Plot für Gruppe 1
+plot1 <- ggplot(plot_data_shop, aes(x = reorder(POI, category), fill = category)) +
+  geom_bar(stat = "count", position = "dodge") +
+  facet_wrap(~ comparison) +
+  coord_flip() +
+  labs(
+    title = "Categorized Changes in Activity per POI (Shop)",
+    x = NULL,
+    y = NULL,
+    fill = "Category"
+  ) +
+  scale_fill_manual(values = c(
+    "High Increase" = "darkgreen",
+    "Moderate Increase" = "lightgreen",
+    "No Significant Change" = "gray",
+    "Moderate Decrease" = "orange",
+    "High Decrease" = "red"
+  )) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+# Plot für Gruppe 2
+plot2 <- ggplot(plot_data_museum %>% filter(group == 1), aes(x = reorder(POI, category), fill = category)) +
+  geom_bar(stat = "count", position = "dodge") +
+  facet_wrap(~ comparison) +
+  coord_flip() +
+  labs(
+    title = "Categorized Changes in Activity per POI (Museum)",
+    x = NULL,
+    y = NULL,
+    fill = "Category"
+  ) +
+  scale_fill_manual(values = c(
+    "High Increase" = "darkgreen",
+    "Moderate Increase" = "lightgreen",
+    "No Significant Change" = "gray",
+    "Moderate Decrease" = "orange",
+    "High Decrease" = "red"
+  )) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+plot3 <- ggplot(plot_data_museum %>% filter(group == 2), aes(x = reorder(POI, category), fill = category)) +
+  geom_bar(stat = "count", position = "dodge") +
+  facet_wrap(~ comparison) +
+  coord_flip() +
+  labs(
+    title = "Categorized Changes in Activity per POI (Museum)",
+    x = NULL,
+    y = NULL,
+    fill = "Category"
+  ) +
+  scale_fill_manual(values = c(
+    "High Increase" = "darkgreen",
+    "Moderate Increase" = "lightgreen",
+    "No Significant Change" = "gray",
+    "Moderate Decrease" = "orange",
+    "High Decrease" = "red"
+  )) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+plot1
+plot2
+plot3
+
+# Daten filtern und Zeiträume markieren
+movement_data_filtered <- movement_data %>%
+  filter(POI == "Bank of England") %>%
+  mutate(
+    period = case_when(
+      AGG_DAY_PERIOD < lockdown_start ~ "Before Lockdown",
+      AGG_DAY_PERIOD >= lockdown_start & AGG_DAY_PERIOD <= lockdown_end ~ "Lockdown",
+      AGG_DAY_PERIOD > lockdown_end & AGG_DAY_PERIOD < partial_lockdown_start ~ "Post Lockdown",
+      AGG_DAY_PERIOD >= partial_lockdown_start ~ "Partial Lockdown",
+      TRUE ~ "Other"
+    ),
+    # Konvertiere period zu einem Faktor mit der gewünschten Reihenfolge
+    period = factor(period, levels = c("Before Lockdown", "Lockdown", "Post Lockdown", "Partial Lockdown"))
+    
+  )
+
+# Durchschnitt für jeden Zeitraum berechnen
+mean_values_filtered <- movement_data_filtered %>%
+  group_by(period) %>%
+  summarise(
+    mean_activity = mean(mean_value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Plot erstellen
+ggplot(mean_values_filtered, aes(x = period, y = mean_activity, fill = period)) +
+  geom_bar(stat = "identity", position = "dodge", show.legend = FALSE) +
+  labs(
+    title = "Veränderung der Aktivität für die Bank of England",
+    x = "Zeitraum",
+    y = "Mittlere Aktivität"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
 # Shiny App with one POI

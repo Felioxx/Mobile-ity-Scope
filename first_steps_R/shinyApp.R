@@ -11,6 +11,9 @@ library(shiny)
 library(plotly)
 library(shinycssloaders)
 library(shinyWidgets)
+library(lubridate)
+library(tidyr)
+library(patchwork)
 
 # define loader
 options(page.spinner.type = 1)
@@ -69,6 +72,11 @@ annotation_text <- paste0(
   "Events:<br>",
   paste(paste(events$Date, events$Event, sep = " - "), collapse = "<br>")
 )
+
+# Define time periods
+lockdown_start <- as.Date("2020-03-23")
+lockdown_end <- as.Date("2020-06-01")
+partial_lockdown_start <- as.Date("2020-11-04")
 
 filter_grid_pois <- function(london, districts, pois, hexagons) {
   
@@ -248,7 +256,95 @@ movement_data <- movement_data %>%
   left_join(pois %>% select(name, type), by = c("POI" = "name"))
 movement_data <- movement_data %>%
   mutate(weekday = weekdays(AGG_DAY_PERIOD))
-#save(movement_data, file = "movement_data.RData")
+#save(movement_data, file = "../Mobile-ity-Scope/first_steps_R/movement_data.RData")
+#load("../Mobile-ity-Scope/first_steps_R/movement_data.RData")
+
+# Filter data and assign time periods
+movement_data <- movement_data %>%
+  mutate(
+    period = case_when(
+      AGG_DAY_PERIOD < lockdown_start ~ "Before_Lockdown",
+      AGG_DAY_PERIOD >= lockdown_start & AGG_DAY_PERIOD <= lockdown_end ~ "Lockdown",
+      AGG_DAY_PERIOD > lockdown_end & AGG_DAY_PERIOD < partial_lockdown_start ~ "Post_Lockdown",
+      AGG_DAY_PERIOD >= partial_lockdown_start ~ "Partial_Lockdown",
+      TRUE ~ "Other"
+    )
+  )
+
+# Calculate the average activity for each period
+mean_values <- movement_data %>%
+  group_by(period, POI, type) %>%
+  summarise(
+    mean_activity = mean(mean_value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Convert data to wide format
+mean_values_wide <- mean_values %>%
+  pivot_wider(names_from = period, values_from = mean_activity, 
+              names_prefix = "mean_")
+
+# Calculate percentage changes between consecutive periods
+mean_values_wide <- mean_values_wide %>%
+  mutate(
+    change_Before_to_Lockdown = (mean_Lockdown - mean_Before_Lockdown) / mean_Before_Lockdown * 100,
+    change_Lockdown_to_Post = (mean_Post_Lockdown - mean_Lockdown) / mean_Lockdown * 100,
+    change_Post_to_Partial = (mean_Partial_Lockdown - mean_Post_Lockdown) / mean_Post_Lockdown * 100
+  )
+
+# Add change categories
+mean_values_wide <- mean_values_wide %>%
+  mutate(
+    category_Before_to_Lockdown = case_when(
+      abs(change_Before_to_Lockdown) < 5 ~ "No Significant Change",
+      change_Before_to_Lockdown > 50 ~ "High Increase",
+      change_Before_to_Lockdown < -50 ~ "High Decrease",
+      change_Before_to_Lockdown > 0 ~ "Moderate Increase",
+      TRUE ~ "Moderate Decrease"
+    ),
+    category_Lockdown_to_Post = case_when(
+      abs(change_Lockdown_to_Post) < 5 ~ "No Significant Change",
+      change_Lockdown_to_Post > 50 ~ "High Increase",
+      change_Lockdown_to_Post < -50 ~ "High Decrease",
+      change_Lockdown_to_Post > 0 ~ "Moderate Increase",
+      TRUE ~ "Moderate Decrease"
+    ),
+    category_Post_to_Partial = case_when(
+      abs(change_Post_to_Partial) < 5 ~ "No Significant Change",
+      change_Post_to_Partial > 50 ~ "High Increase",
+      change_Post_to_Partial < -50 ~ "High Decrease",
+      change_Post_to_Partial > 0 ~ "Moderate Increase",
+      TRUE ~ "Moderate Decrease"
+    )
+  )
+
+# Prepare data for plotting categories
+plot_data_categories <- mean_values_wide %>%
+  select(POI, type, category_Before_to_Lockdown, category_Lockdown_to_Post, category_Post_to_Partial) %>%
+  pivot_longer(
+    cols = starts_with("category_"),
+    names_to = "comparison",
+    values_to = "category"
+  )
+
+# Ensure the legend appears in the correct order
+plot_data_categories <- plot_data_categories %>%
+  mutate(category = factor(category, levels = c(
+    "High Increase",
+    "Moderate Increase",
+    "No Significant Change",
+    "Moderate Decrease",
+    "High Decrease"
+  )))
+
+# Filter data for 'shop'
+plot_data_shop <- plot_data_categories %>% filter(type == "shop")
+
+# Filter data for 'museum' and split it into two groups
+plot_data_museum <- plot_data_categories %>% filter(type == "museum") %>%
+  mutate(group = ntile(row_number(), 2))
+
+
 
 # define the user interface
 ui <- fluidPage(
@@ -318,6 +414,11 @@ ui <- fluidPage(
       ),
       tabPanel("Plot Aggregated", 
         plotlyOutput("linePlot_aggregated")
+      ),
+      tabPanel("Plot Categories", 
+                  plotOutput("categories_shops"),
+                  plotOutput("categories_museums1"),
+                  plotOutput("categories_museums2")
       )
     )
   )
@@ -472,7 +573,7 @@ server <- function(input, output, session) {
       ) +
       theme_minimal()
     
-    ggplotly(p) %>%
+    plotly_obj <- ggplotly(p) %>%
       layout(legend = list(orientation = "h", x = 0, y = -1), 
              height = 800, 
              annotations = list(
@@ -487,6 +588,11 @@ server <- function(input, output, session) {
                   align = "left"  # Text linksbündig ausrichten
                 )
       ))
+    
+    # for (i in seq_along(plotly_obj$x$data)) {
+    #   plotly_obj$x$data[[i]]$visible <- "legendonly"
+    # }
+    plotly_obj
   })
   
   output$linePlot_aggregated <- renderPlotly({
@@ -528,6 +634,87 @@ server <- function(input, output, session) {
                )
              ))
   })
+  
+  output$categories_shops <- renderPlot({
+    # Plot for group 1 (Shops)
+    ggplot(plot_data_shop, aes(x = reorder(POI, as.numeric(category)), fill = category)) +
+      geom_bar(stat = "count", position = "dodge") +
+      facet_wrap(~ comparison) +
+      coord_flip() +
+      labs(
+        title = "Categorized Changes in Activity per POI (Shop)",
+        x = NULL,
+        y = NULL,
+        fill = "Category"
+      ) +
+      scale_fill_manual(values = c(
+        "High Increase" = "darkgreen",
+        "Moderate Increase" = "lightgreen",
+        "No Significant Change" = "gray",
+        "Moderate Decrease" = "orange",
+        "High Decrease" = "red"
+      )) +
+      theme_minimal() +
+      theme(
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+      )
+  }, height = 600)
+  
+  output$categories_museums1 <- renderPlot({
+    # Plot for group 2 (Museums - First Half)
+    ggplot(plot_data_museum %>% filter(group == 1), aes(x = reorder(POI, as.numeric(category)), fill = category)) +
+      geom_bar(stat = "count", position = "dodge") +
+      facet_wrap(~ comparison) +
+      coord_flip() +
+      labs(
+        title = "Categorized Changes in Activity per POI (Museum)",
+        x = NULL,
+        y = NULL,
+        fill = "Category"
+      ) +
+      scale_fill_manual(values = c(
+        "High Increase" = "darkgreen",
+        "Moderate Increase" = "lightgreen",
+        "No Significant Change" = "gray",
+        "Moderate Decrease" = "orange",
+        "High Decrease" = "red"
+      )) +
+      theme_minimal() +
+      theme(
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+      )
+  }, height = 800)
+  
+  output$categories_museums2 <- renderPlot({
+    # Plot for group 3 (Museums - Second Half)
+    ggplot(plot_data_museum %>% filter(group == 2), aes(x = reorder(POI, as.numeric(category)), fill = category)) +
+      geom_bar(stat = "count", position = "dodge") +
+      facet_wrap(~ comparison) +
+      coord_flip() +
+      labs(
+        title = "Categorized Changes in Activity per POI (Museum)",
+        x = NULL,
+        y = NULL,
+        fill = "Category"
+      ) +
+      scale_fill_manual(values = c(
+        "High Increase" = "darkgreen",
+        "Moderate Increase" = "lightgreen",
+        "No Significant Change" = "gray",
+        "Moderate Decrease" = "orange",
+        "High Decrease" = "red"
+      )) +
+      theme_minimal() +
+      theme(
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+      )
+  }, height = 800)
 
   
   # Karte aktualisieren, wenn sich die gefilterten Daten ändern
@@ -537,10 +724,7 @@ server <- function(input, output, session) {
     print(paste("Chosen Districts:", paste(c(input$districtsA, input$districtsB, input$districtsC), collapse = ", ")))
     data <- filtered_data()
     
-    min <- min(data$hexagons_with_means$mean_value, na.rm = TRUE)
-    max <- max(data$hexagons_with_means$mean_value, na.rm = TRUE)
-    
-    my_domain <- c(min, max)
+    my_domain <- c(0, 3)
     
     if (input$submit2 > input$submit) {
       fixed_bin_scale <- colorBin(palette = c("blue","cyan","white", "yellow","red"), 
