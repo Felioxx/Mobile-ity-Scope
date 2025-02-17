@@ -110,7 +110,7 @@ The Aggregated Mobility-plot visualizes the difference between the activity arou
 <br />
 
 
-<p align="right">(<a href="https://github.com/Bachelor-thesis-windpark-simulator/windpark-simulator/blob/main/README.md#windscope">back to top</a>)</p>
+<p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
 ______________________________
 
@@ -120,7 +120,7 @@ ______________________________
 * [![StackOverflow][StackOverflow.com]][StackOverflow-url]
 * ![rstudio][rstudio-url]
 
-<p align="right">(<a href="https://github.com/Bachelor-thesis-windpark-simulator/windpark-simulator/blob/main/README.md#windscope">back to top</a>)</p>
+<p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
 
 
@@ -142,7 +142,7 @@ ______________________________
    ```sh
    npm start
    ```
-<p align="right">(<a href="https://github.com/Bachelor-thesis-windpark-simulator/windpark-simulator/blob/main/README.md#windscope">back to top</a>)</p>
+<p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
 <!-- LICENSE -->
 ## License
@@ -150,7 +150,7 @@ Copyright (c) 2025 Spacey GmbH
 
 Distributed under the MIT License. See `LICENSE.txt` for more information.
 
-<p align="right">(<a href="https://github.com/Bachelor-thesis-windpark-simulator/windpark-simulator/blob/main/README.md#windscope">back to top</a>)</p>
+<p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
 <!-- CONTACT -->
 ## Contact
@@ -163,7 +163,7 @@ Felix Disselkamp - fdisselk@uni-muenster.de
 
 ##### Project Link: [https://github.com/Felioxx/SIS-Course](https://github.com/Felioxx/Mobile-ity-Scope)
 
-<p align="right">(<a href="https://github.com/Bachelor-thesis-windpark-simulator/windpark-simulator/blob/main/README.md#windscope">back to top</a>)</p>
+<p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
 
 
