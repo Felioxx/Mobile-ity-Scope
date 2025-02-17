@@ -34,13 +34,15 @@
 </details>
 
 <!-- ABOUT THE PROJECT -->
+
 ## About The Project
+
 This project was done during the winter term 2024/25 at ifgi Münster as part of the Analysis of Human Movement Data Course of the Master in Geoinformatics.
 
 In this project an interactive Shiny App in R for the analysis of the movement of Londoners during the year 2020 was implemented. The App includes a map and two interactive plots which focus on the Movement around museums and shops in Greater London.
 
 These components, which will be explained in the following:
- 
+
 ## The Analysis Tool
 
 <div class="image">
@@ -48,6 +50,7 @@ These components, which will be explained in the following:
 </div>
 
 ### The Mobility-Map
+
 The Mobility Map displays the movement data in at least 100m x 100m large tiles. The color indicates the activity. Additionally the user can set some parameters before calculating the map. But first they have to decide wether to calculate the activity for one day or for the relative change between two days.
 <br />
 <br />
@@ -60,23 +63,26 @@ The Mobility Map displays the movement data in at least 100m x 100m large tiles.
 <br />
 <br />
 The parameters are:
-* The date
-* Optional: a date for comparison
-* The districts of Greater London
-* The tile size
-  * 100m²
-  * 200m²
-  * 400m²
-  * 800m²
-  
+
+- The date
+- Optional: a date for comparison
+- The districts of Greater London
+- The tile size
+  - 100m²
+  - 200m²
+  - 400m²
+  - 800m²
+
 The map also displays the locations of 197 museums and 80 shoopping centres.
-___________________________________________
+
+---
 
 <div class="image">
   <img align=left width="50%" src="https://github.com/Felioxx/Mobile-ity-Scope/blob/main/images/Plot_Screenshot.png">
 </div>
 
 ### The Interactive Mobility-Plot
+
 The Mobility Plot shows the activity around the single musuems and shopping centres for the whole year 2020. The user can select several PoIs and see the development of the measured activity for the whole year but they can also zoom in and analyse specific dates.
 <br />
 <br />
@@ -89,12 +95,15 @@ The Mobility Plot shows the activity around the single musuems and shopping cent
 <br />
 <br />
 <br />
-____________________________________________
+
+---
+
 <div class="image">
   <img align=left width="50%" src="https://github.com/Felioxx/Mobile-ity-Scope/blob/main/images/Aggregated_Plot_Screenshot.png">
 </div>
 
 ### The Aggregated Mobility-Plot
+
 The Aggregated Mobility-plot visualizes the difference between the activity around museums and shopping centres
 
 <br />
@@ -109,43 +118,35 @@ The Aggregated Mobility-plot visualizes the difference between the activity arou
 <br />
 <br />
 
-
 <p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
-______________________________
+---
 
 ### Built With
 
-* [![python][python.com]][python-url]
-* [![StackOverflow][StackOverflow.com]][StackOverflow-url]
-* ![rstudio][rstudio-url]
+- [![python][python.com]][python-url]
+- [![StackOverflow][StackOverflow.com]][StackOverflow-url]
+- ![rstudio][rstudio-url]
 
 <p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
-
-
 <!-- GETTING STARTED -->
+
 ## Getting Started
 
-### Installation
+To start the shiny app the code in `first_steps_R/shinyApp.R` must be executed. Before that the required libaries must be installed and the working directory must be set to the folder of the repository. The following data is needed, which is not included in this repository:
 
-1. Clone the repo
-   ```sh
-   https://github.com/Felioxx/SIS-Course
-   ```
-2. Install NPM packages in the root directory.
-   ```sh
-   cd App
-   npm install
-   ```
-3. Run the application
-   ```sh
-   npm start
-   ```
+- pre_processed_movement.parquet
+- distinct_LONLAT.parquet
+
+Also the part in row number 232 til 243 can be skipped by loading in the object `first_steps_R/movement_data.RData`. The code for that is already in the script.
+
 <p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
 <!-- LICENSE -->
+
 ## License
+
 Copyright (c) 2025 Spacey GmbH
 
 Distributed under the MIT License. See `LICENSE.txt` for more information.
@@ -153,6 +154,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 <p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
 <!-- CONTACT -->
+
 ## Contact
 
 Eva Langstein - elangste@uni-muenster.de
@@ -165,13 +167,13 @@ Felix Disselkamp - fdisselk@uni-muenster.de
 
 <p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
-
-
 <!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
+
 <a name="readme-top"></a>
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
+
 [contributors-shield]: https://img.shields.io/github/contributors/github_username/repo_name.svg?style=for-the-badge
 [contributors-url]: https://github.com/github_username/repo_name/graphs/contributors
 [forks-shield]: https://img.shields.io/github/forks/github_username/repo_name.svg?style=for-the-badge
@@ -207,6 +209,7 @@ Felix Disselkamp - fdisselk@uni-muenster.de
 [StackOverflow.com]: https://img.shields.io/badge/-Stackoverflow-FE7A16?style=for-the-badge&logo=stack-overflow&logoColor=white
 [openAi-url]: https://openai.com/
 [openAi.com]: https://img.shields.io/badge/-OpenAI%20API-eee?style=for-the-badge&logo=openai&logoColor=412991
+
 [nodeJS-url]: [https://pixijs.com/](https://nodejs.org/en)
 [nodeJS.com]: https://img.shields.io/badge/node.js-6DA55F?style=for-the-badge&logo=node.js&logoColor=white
 [neo4j.com]: https://img.shields.io/badge/neo4j-4581C3?style=for-the-badge&logo=neo4j&logoColor=white
