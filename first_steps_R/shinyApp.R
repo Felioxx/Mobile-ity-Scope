@@ -1,4 +1,6 @@
-setwd("D:/Dokumente/Studium/9 FS/Study Project/Data")
+setwd("D:/Dokumente/Studium/9 FS/Study Project/Mobile-ity-Scope")
+
+# Load required libraries
 library(osmdata)
 library(sf)
 library(tmap)
@@ -20,18 +22,22 @@ options(page.spinner.type = 1)
 options(page.spinner.caption = "Your map is being calculated :)")
 options(page.spinner.color = "orange")
 
-london<- read_sf('msoa2021/merged_districts.shp')
+# Load districts and union them
+london<- read_sf('Districts/merged_districts.shp')
 london <- st_transform(london, crs = 4326)
 london <- london %>%
   group_by(district_n) %>%
   summarise(
     geometry = st_union(geometry)
   )
-movement <- read_parquet("pre_processed_movement.parquet")
-tiles <- read_parquet("distinct_LONLAT.parquet")
-#pois <- read.csv("../Mobile-ity-Scope/first_steps_python/attractionsGreaterLondon.csv")
-shops <- read_sf('../Mobile-ity-Scope/POIs/shops.shp')
-museums <- read_sf('../Mobile-ity-Scope/POIs/museums.shp')
+
+# Here the data from Learnweb is loaded. Please use your own local data.
+movement <- read_parquet("../data/pre_processed_movement.parquet")
+tiles <- read_parquet("../data/distinct_LONLAT.parquet")
+
+# Load POIs
+shops <- read_sf('POIs/shops.shp')
+museums <- read_sf('POIs/museums.shp')
 shops$type <- "shop"
 museums$type <- "museum"
 pois <- rbind(shops, museums)
@@ -39,22 +45,20 @@ coords <- st_coordinates(pois)
 pois <- pois %>%
   mutate(lon = coords[, 1], lat = coords[, 2])
 
-#hexagons <- read_sf('hexgr_2.shp')
-
-grid_18 <- read_sf('../Mobile-ity-Scope/grids/grids_18.shp')
-grid_17 <- read_sf('../Mobile-ity-Scope/grids/grids_17.shp')
-grid_16 <- read_sf('../Mobile-ity-Scope/grids/grids_16.shp')
-grid_15 <- read_sf('../Mobile-ity-Scope/grids/grids_15.shp')
-grid_14 <- read_sf('../Mobile-ity-Scope/grids/grids_14.shp')
+# Load grids and assign grid IDs
+grid_18 <- read_sf('grids/grids_18.shp')
+grid_17 <- read_sf('grids/grids_17.shp')
+grid_16 <- read_sf('grids/grids_16.shp')
+grid_15 <- read_sf('grids/grids_15.shp')
+grid_14 <- read_sf('grids/grids_14.shp')
 
 grid_18$grid_id <- seq(1, nrow(grid_18))
 grid_17$grid_id <- seq(1, nrow(grid_17))
 grid_16$grid_id <- seq(1, nrow(grid_16))
 grid_15$grid_id <- seq(1, nrow(grid_15))
 grid_14$grid_id <- seq(1, nrow(grid_14))
-#grid <- st_transform(grid, crs = 4326)
-#hexagons <- grid
 
+# Define the Corona events
 events <- data.frame(
   Date = as.Date(c("2020-02-12", "2020-03-17", "2020-03-23", "2020-04-15", "2020-06-01", "2020-09-22", "2020-11-04")),
   Event = c(
@@ -63,11 +67,10 @@ events <- data.frame(
     "Lockdown",
     "Extension of lockdown",
     "Outdoor markets and gatherings of up to six people with two-meter distancing are permitted",
-    "Prime Minister Boris Johnson announced new restrictions on everyday life",
+    "New restrictions on everyday life were announced",
     "Partial lockdown"
   )
 )
-
 annotation_text <- paste0(
   "Events:<br>",
   paste(paste(events$Date, events$Event, sep = " - "), collapse = "<br>")
@@ -78,44 +81,30 @@ lockdown_start <- as.Date("2020-03-23")
 lockdown_end <- as.Date("2020-06-01")
 partial_lockdown_start <- as.Date("2020-11-04")
 
-filter_grid_pois <- function(london, districts, pois, hexagons) {
+# Filter data with the given districts
+filter_grid_pois <- function(london, districts, pois, grid) {
   
-  # Filter districts
   london_filtered <- london[london$district_n %in% districts, ]
   
-  # GeoJSON-Geometrie in sf-Objekte konvertieren
-  # pois_sf <- pois %>%
-  #   mutate(geometry = st_as_sfc(geometry)) %>%
-  #   st_as_sf()
-  # st_crs(pois_sf) <- 4326
-  
-  pois_sf <- pois
-  
-  # Berechne den Schwerpunkt für Polygone, Punkte bleiben unverändert
-  pois_sf <- pois_sf %>%
+  pois <- pois %>%
     mutate(geometry = st_centroid(geometry))
-  
-  # Extrahiere Koordinaten aus dem sf-Objekt
-  coords <- st_coordinates(pois_sf)
-  
-  # Füge die Koordinaten dem sf-Objekt als zusätzliche Spalten hinzu
-  pois_sf <- pois_sf %>%
+  coords <- st_coordinates(pois)
+  pois <- pois %>%
     mutate(lon = coords[, 1], lat = coords[, 2])
+  pois_indices <- st_within(pois, london_filtered, sparse = FALSE)
+  pois_within <- pois[apply(pois_indices, 1, any), ]
   
-  pois_indices <- st_within(pois_sf, london_filtered, sparse = FALSE)
-  pois_within <- pois_sf[apply(pois_indices, 1, any), ]
-  
-  # Filter hexagons
-  intersects_indices <- st_intersects(hexagons, london_filtered, sparse = FALSE)
-  hexagons_intersects <- hexagons[apply(intersects_indices, 1, any), ]
+  intersects_indices <- st_intersects(grid, london_filtered, sparse = FALSE)
+  grid_intersects <- grid[apply(intersects_indices, 1, any), ]
   
   return (list(
     london_filtered = london_filtered,
     pois_within = pois_within,
-    hexagons_intersects = hexagons_intersects))
+    grid_intersects = grid_intersects))
 }
 
-filter_movement_data <- function(movement_data, tiles, london_filtered, hexagons_intersects, date){
+# Filter movement dataset with the given date and districts
+filter_movement_data <- function(movement_data, tiles, london_filtered, grid_intersects, date){
   
   # Filter movement data with date
   movement_filter <- movement_data[movement_data$AGG_DAY_PERIOD == date,]
@@ -127,14 +116,14 @@ filter_movement_data <- function(movement_data, tiles, london_filtered, hexagons
   movement_join_within <- movement_sf[apply(within_indices, 1, any), ]
   movement_join_within <- movement_join_within[order(movement_join_within$mean_column),]
   
-  # Hexagons
-  movement_join_within_hex <- st_join(movement_join_within, hexagons_intersects, join = st_within)
-  hexagon_means <- movement_join_within_hex %>%
+  # grid
+  movement_join_within_g <- st_join(movement_join_within, grid_intersects, join = st_within)
+  grid_means <- movement_join_within_g %>%
     group_by(grid_id) %>%
     summarise(mean_value = mean(mean_column, na.rm = TRUE))
-  hexagon_means <- hexagon_means %>% st_drop_geometry()
-  hexagons_with_means <- hexagons_intersects %>%
-    left_join(hexagon_means, by = c("grid_id" = "grid_id"))
+  grid_means <- grid_means %>% st_drop_geometry()
+  grid_with_means <- grid_intersects %>%
+    left_join(grid_means, by = c("grid_id" = "grid_id"))
   
   # Add coords to the table
   movement_join_within_coords <- movement_join_within %>%
@@ -142,10 +131,11 @@ filter_movement_data <- function(movement_data, tiles, london_filtered, hexagons
   
   return (list(
     movement_join_within_coords = movement_join_within_coords,
-    hexagons_with_means = hexagons_with_means))
+    grid_with_means = grid_with_means))
 }
 
-calculate_one_date <- function(movement_data, tiles, london, pois, hexagons, date, districts){
+# Is executed, when the button "Update Map according to first date" is clicked
+calculate_one_date <- function(movement_data, tiles, london, pois, grid, date, districts){
   print("calculate_one_date:")
   print("Chosen date:")
   print(date)
@@ -153,17 +143,18 @@ calculate_one_date <- function(movement_data, tiles, london, pois, hexagons, dat
   print("Chosen districts:")
   print(districts)
   
-  result <- filter_grid_pois(london, districts, pois, hexagons)
-  result1 <- filter_movement_data(movement_data, tiles, result$london_filtered, result$hexagons_intersects, date)
+  result <- filter_grid_pois(london, districts, pois, grid)
+  result1 <- filter_movement_data(movement_data, tiles, result$london_filtered, result$grid_intersects, date)
   
   return (list(
     london_filtered = result$london_filtered, 
     movement_join_within_coords = result1$movement_join_within_coords,
     pois_within = result$pois_within,
-    hexagons_with_means = result1$hexagons_with_means))
+    grid_with_means = result1$grid_with_means))
 }
 
-compare_dates <- function(movement_data, tiles, london, pois, hexagons, date1, date2, districts) {
+# Is executed when the button "Update Map according to both dates" is clicked
+compare_dates <- function(movement_data, tiles, london, pois, grid, date1, date2, districts) {
   
   print("compare_dates:")
   print("Chosen dates:")
@@ -173,49 +164,39 @@ compare_dates <- function(movement_data, tiles, london, pois, hexagons, date1, d
   print("Chosen districts:")
   print(districts)
   
-  result <- filter_grid_pois(london, districts, pois, hexagons)
-  result1 <- filter_movement_data(movement_data, tiles, result$london_filtered, result$hexagons_intersects, date1)
-  result2 <- filter_movement_data(movement_data, tiles, result$london_filtered, result$hexagons_intersects, date2)
+  result <- filter_grid_pois(london, districts, pois, grid)
+  result1 <- filter_movement_data(movement_data, tiles, result$london_filtered, result$grid_intersects, date1)
+  result2 <- filter_movement_data(movement_data, tiles, result$london_filtered, result$grid_intersects, date2)
   
-  hexagons1 <- result1$hexagons_with_means
-  hexagons2 <- result2$hexagons_with_means
+  # Combine the two results
+  grid1 <- result1$grid_with_means
+  grid2 <- result2$grid_with_means
   movement1 <- result1$movement_join_within_coords
   movement2 <- result2$movement_join_within_coords
   
-  # 1. Geometrie temporär entfernen
-  hexagons1_geom <- st_geometry(hexagons1)
-  hexagons2_geom <- st_geometry(hexagons2)
+  grid1_geom <- st_geometry(grid1)
+  grid2_geom <- st_geometry(grid2)
   
-  # 2. Daten ohne Geometrie joinen
-  hexagons1 <- hexagons1 %>% st_set_geometry(NULL)
-  hexagons2 <- hexagons2 %>% st_set_geometry(NULL)
+  grid1 <- grid1 %>% st_set_geometry(NULL)
+  grid2 <- grid2 %>% st_set_geometry(NULL)
   movement1 <- movement1 %>% st_set_geometry(NULL)
   movement2 <- movement2 %>% st_set_geometry(NULL)
   
-  merged_hexagons <- inner_join(hexagons1, hexagons2, by = "grid_id", suffix = c("_1", "_2"))
+  merged_grid <- inner_join(grid1, grid2, by = "grid_id", suffix = c("_1", "_2"))
   merged_movement <- full_join(movement1, movement2, by = "LONLAT_ID", suffix = c("_1", "_2"))
   
-  # 3. Geometrie wieder hinzufügen
-  merged_hexagons <- st_as_sf(merged_hexagons, geometry = hexagons1_geom)
-  # Determine which coordinates to use
+  merged_grid <- st_as_sf(merged_grid, geometry = grid1_geom)
   merged_movement$new_X <- ifelse(is.na(merged_movement$X_1), merged_movement$X_2, merged_movement$X_1)
   merged_movement$new_Y <- ifelse(is.na(merged_movement$Y_1), merged_movement$Y_2, merged_movement$Y_1)
   merged_movement <- st_as_sf(merged_movement, coords = c("new_X", "new_Y"), crs = st_crs(london))
   
-  # Differenz der Mittelwerte berechnen
-  #merged_hexagons <- merged_hexagons %>%
-  #  mutate(mean_value_diff = ifelse(is.na(mean_value_1) | is.na(mean_value_2), NA, mean_value_1 - mean_value_2))
-  #merged_movement <- merged_movement %>%
-  #  mutate(mean_column_diff = ifelse(is.na(mean_column_1) | is.na(mean_column_2), NA, mean_column_1 - mean_column_2))
-  
-  # Prozentualen Anteil berechnen
-  merged_hexagons <- merged_hexagons %>%
+  # Calculate relative change of the two results
+  merged_grid <- merged_grid %>%
     mutate(mean_value_diff = ifelse(is.na(mean_value_1) | is.na(mean_value_2), NA, round(((mean_value_2/mean_value_1)-1) *100,2)))
   merged_movement <- merged_movement %>%
     mutate(mean_column_diff = ifelse(is.na(mean_column_1) | is.na(mean_column_2), NA, round(((mean_column_2/mean_column_1)-1) *100,2)))
   
-  # Ergebnis in die Struktur von hexagons1 übertragen
-  result_hexagons <- merged_hexagons %>%
+  result_grid <- merged_grid %>%
     select(grid_id, everything(), mean_value = mean_value_diff)
   result_movement <- merged_movement %>%
     select(LONLAT_ID, everything(), mean_column = mean_column_diff)
@@ -224,9 +205,10 @@ compare_dates <- function(movement_data, tiles, london, pois, hexagons, date1, d
     london_filtered = result$london_filtered, 
     movement_join_within_coords = movement1,
     pois_within = result$pois_within,
-    hexagons_with_means = result_hexagons))
+    grid_with_means = result_grid))
 }
 
+# Function to calculate the mean movement for a given POI
 calculate_movement_mean <- function(poi_name, buffer_size = 100) {
   # Function for line graph
   poi_filter <- pois %>% filter(name == poi_name)
@@ -248,17 +230,19 @@ calculate_movement_mean <- function(poi_name, buffer_size = 100) {
 }
 
 # Calculations for line graph. Attention: It will take some time!
-movement_data <- do.call(
-  rbind,
-  lapply(unique(pois$name), calculate_movement_mean)
-)
-movement_data <- movement_data %>%
-  left_join(pois %>% select(name, type), by = c("POI" = "name"))
-movement_data <- movement_data %>%
-  mutate(weekday = weekdays(AGG_DAY_PERIOD))
-#save(movement_data, file = "../Mobile-ity-Scope/first_steps_R/movement_data.RData")
-#load("../Mobile-ity-Scope/first_steps_R/movement_data.RData")
+# Load this instead:
+load("first_steps_R/movement_data.RData")
+# movement_data <- do.call(
+#   rbind,
+#   lapply(unique(pois$name), calculate_movement_mean)
+# )
+# movement_data <- movement_data %>%
+#   left_join(pois %>% select(name, type), by = c("POI" = "name"))
+# movement_data <- movement_data %>%
+#   mutate(weekday = weekdays(AGG_DAY_PERIOD))
+#save(movement_data, file = "first_steps_R/movement_data.RData")
 
+# Create data for the category plot
 # Filter data and assign time periods
 movement_data <- movement_data %>%
   mutate(
@@ -278,21 +262,15 @@ mean_values <- movement_data %>%
     mean_activity = mean(mean_value, na.rm = TRUE),
     .groups = "drop"
   )
-
-# Convert data to wide format
 mean_values_wide <- mean_values %>%
   pivot_wider(names_from = period, values_from = mean_activity, 
               names_prefix = "mean_")
-
-# Calculate percentage changes between consecutive periods
 mean_values_wide <- mean_values_wide %>%
   mutate(
     change_Before_to_Lockdown = (mean_Lockdown - mean_Before_Lockdown) / mean_Before_Lockdown * 100,
     change_Lockdown_to_Post = (mean_Post_Lockdown - mean_Lockdown) / mean_Lockdown * 100,
     change_Post_to_Partial = (mean_Partial_Lockdown - mean_Post_Lockdown) / mean_Post_Lockdown * 100
   )
-
-# Add change categories
 mean_values_wide <- mean_values_wide %>%
   mutate(
     category_Before_to_Lockdown = case_when(
@@ -317,8 +295,6 @@ mean_values_wide <- mean_values_wide %>%
       TRUE ~ "Moderate Decrease"
     )
   )
-
-# Prepare data for plotting categories
 plot_data_categories <- mean_values_wide %>%
   select(POI, type, category_Before_to_Lockdown, category_Lockdown_to_Post, category_Post_to_Partial) %>%
   pivot_longer(
@@ -326,8 +302,6 @@ plot_data_categories <- mean_values_wide %>%
     names_to = "comparison",
     values_to = "category"
   )
-
-# Ensure the legend appears in the correct order
 plot_data_categories <- plot_data_categories %>%
   mutate(category = factor(category, levels = c(
     "High Increase",
@@ -341,10 +315,7 @@ plot_data_categories <- plot_data_categories %>%
 plot_data_shop <- plot_data_categories %>% filter(type == "shop")
 
 # Filter data for 'museum' and split it into two groups
-plot_data_museum <- plot_data_categories %>% filter(type == "museum") %>%
-  mutate(group = ntile(row_number(), 2))
-
-
+plot_data_museum <- plot_data_categories %>% filter(type == "museum")
 
 # define the user interface
 ui <- fluidPage(
@@ -417,8 +388,7 @@ ui <- fluidPage(
       ),
       tabPanel("Plot Categories", 
                   plotOutput("categories_shops"),
-                  plotOutput("categories_museums1"),
-                  plotOutput("categories_museums2")
+                  plotOutput("categories_museums")
       )
     )
   )
@@ -437,29 +407,27 @@ server <- function(input, output, session) {
                              selected = unique(london$district_n)[23:33])
   })
   
-  
-  
   # Define filtered data for submit
   filtered_data_single <- eventReactive(input$submit, {
     showPageSpinner()
     req(c(input$districtsA, input$districtsB, input$districtsC), input$selected_date)
     if(input$grid_size == "1x1"){
-      hexagons <- grid_18
+      grid <- grid_18
     } else if(input$grid_size == "2x2"){
-      hexagons <- grid_17
+      grid <- grid_17
     } else if(input$grid_size == "4x4"){
-      hexagons <- grid_16
+      grid <- grid_16
     } else if(input$grid_size == "8x8"){
-      hexagons <- grid_15
+      grid <- grid_15
     } else if(input$grid_size == "16x16"){
-      hexagons <- grid_14
+      grid <- grid_14
     }
     calculate_one_date(
       movement_data = movement,
       tiles = tiles,
       london = london,
       pois = pois,
-      hexagons = hexagons,
+      grid = grid,
       date = as.character(input$selected_date),
       districts = c(input$districtsA, input$districtsB, input$districtsC)
     )
@@ -470,22 +438,22 @@ server <- function(input, output, session) {
     showPageSpinner()
     req(c(input$districtsA, input$districtsB, input$districtsC), input$selected_date, input$selected_date_2)
     if(input$grid_size == "1x1"){
-      hexagons <- grid_18
+      grid <- grid_18
     } else if(input$grid_size == "2x2"){
-      hexagons <- grid_17
+      grid <- grid_17
     } else if(input$grid_size == "4x4"){
-      hexagons <- grid_16
+      grid <- grid_16
     } else if(input$grid_size == "8x8"){
-      hexagons <- grid_15
+      grid <- grid_15
     } else if(input$grid_size == "16x16"){
-      hexagons <- grid_14
+      grid <- grid_14
     }
     compare_dates(
       movement_data = movement,
       tiles = tiles,
       london = london,
       pois = pois,
-      hexagons = hexagons,
+      grid = grid,
       date1 = as.character(input$selected_date),
       date2 = as.character(input$selected_date_2),
       districts = c(input$districtsA, input$districtsB, input$districtsC)
@@ -501,7 +469,6 @@ server <- function(input, output, session) {
     }
   })
   
-  # Initiale Karte rendern
   output$map <- renderLeaflet({
     leaflet() %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
@@ -531,7 +498,6 @@ server <- function(input, output, session) {
           markerColor = "orange"
         )) %>%
       
-      # London-Polygon
       addPolygons(
         data = london,
         color = "black",
@@ -548,7 +514,7 @@ server <- function(input, output, session) {
       
       # Layers control
       addLayersControl(
-        overlayGroups = c("London", "Hexagons", "Movement Points", "Shops", "Museums"),
+        overlayGroups = c("London", "grid", "Movement Points", "Shops", "Museums"),
         options = layersControlOptions(collapsed = FALSE)
       ) 
   })
@@ -584,20 +550,17 @@ server <- function(input, output, session) {
                   showarrow = FALSE,
                   xref = "paper", 
                   yref = "paper",
-                  font = list(size = 10),  # Schriftgröße
-                  align = "left"  # Text linksbündig ausrichten
+                  font = list(size = 10),
+                  align = "left"
                 )
       ))
     
-    # for (i in seq_along(plotly_obj$x$data)) {
-    #   plotly_obj$x$data[[i]]$visible <- "legendonly"
-    # }
     plotly_obj
   })
   
   output$linePlot_aggregated <- renderPlotly({
     aggregated_data <- movement_data %>%
-      group_by(AGG_DAY_PERIOD, category = type) %>% # Gruppierung nach Typ
+      group_by(AGG_DAY_PERIOD, category = type) %>%
       summarise(mean_activity = mean(mean_value, na.rm = TRUE))
     
     p <- ggplot(aggregated_data, aes(x = AGG_DAY_PERIOD, y = mean_activity, color = category)) +
@@ -629,8 +592,8 @@ server <- function(input, output, session) {
                  showarrow = FALSE,
                  xref = "paper", 
                  yref = "paper",
-                 font = list(size = 10),  # Schriftgröße
-                 align = "left"  # Text linksbündig ausrichten
+                 font = list(size = 10),
+                 align = "left"
                )
              ))
   })
@@ -662,9 +625,9 @@ server <- function(input, output, session) {
       )
   }, height = 600)
   
-  output$categories_museums1 <- renderPlot({
+  output$categories_museums <- renderPlot({
     # Plot for group 2 (Museums - First Half)
-    ggplot(plot_data_museum %>% filter(group == 1), aes(x = reorder(POI, as.numeric(category)), fill = category)) +
+    ggplot(plot_data_museum, aes(x = reorder(POI, as.numeric(category)), fill = category)) +
       geom_bar(stat = "count", position = "dodge") +
       facet_wrap(~ comparison) +
       coord_flip() +
@@ -687,37 +650,9 @@ server <- function(input, output, session) {
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank()
       )
-  }, height = 800)
-  
-  output$categories_museums2 <- renderPlot({
-    # Plot for group 3 (Museums - Second Half)
-    ggplot(plot_data_museum %>% filter(group == 2), aes(x = reorder(POI, as.numeric(category)), fill = category)) +
-      geom_bar(stat = "count", position = "dodge") +
-      facet_wrap(~ comparison) +
-      coord_flip() +
-      labs(
-        title = "Categorized Changes in Activity per POI (Museum)",
-        x = NULL,
-        y = NULL,
-        fill = "Category"
-      ) +
-      scale_fill_manual(values = c(
-        "High Increase" = "darkgreen",
-        "Moderate Increase" = "lightgreen",
-        "No Significant Change" = "gray",
-        "Moderate Decrease" = "orange",
-        "High Decrease" = "red"
-      )) +
-      theme_minimal() +
-      theme(
-        axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank()
-      )
-  }, height = 800)
+  }, height = 1600)
 
-  
-  # Karte aktualisieren, wenn sich die gefilterten Daten ändern
+  # Update the map
   observe({
     print(paste("Chosen Date:", input$selected_date))
     print(paste("Chosen Date2:", input$selected_date_2))
@@ -734,7 +669,7 @@ server <- function(input, output, session) {
     }
     else {
       fixed_bin_scale <- colorBin(
-        palette = c("blue", "red"),  # Farbpalette von Blau bis Rot
+        palette = c("blue", "red"),
         domain = my_domain,
         bins = 7
       )
@@ -744,19 +679,8 @@ server <- function(input, output, session) {
     
     # Karte aktualisieren
     leafletProxy("map") %>%
-      clearGroup(c("Heatmap", "London", "Hexagons", "Movement Points", "Shops", "Museums")) %>%
+      clearGroup(c("London", "grid", "Movement Points", "Shops", "Museums")) %>%
       clearControls() %>%
-      # Heatmap
-      # addHeatmap(
-      #   data = data$movement_join_within_coords,
-      #   lng = ~X, lat = ~Y,
-      #   intensity = ~mean_column,
-      #   radius = 100,
-      #   blur = 0,
-      #   max = 3,
-      #   gradient = c("blue", "green", "yellow", "red"),
-      #   group = "Heatmap"
-      # ) %>%
       
       # POIs
       addAwesomeMarkers(
@@ -798,7 +722,7 @@ server <- function(input, output, session) {
         )
       ) %>%
       
-      # Punkte
+      # Points
       addCircleMarkers(
         data = data$movement_join_within_coords,
         lng = ~X, lat = ~Y,
@@ -809,14 +733,14 @@ server <- function(input, output, session) {
         group = "Movement Points"
       ) %>%
       
-      # Hexagons
-      addPolygons(data = data$hexagons_with_means,
+      # grid
+      addPolygons(data = data$grid_with_means,
                   color = "black",
                   weight = 1,
                   fillColor = ~fixed_bin_scale(mean_value),
                   fillOpacity = 0.7,
                   popup = ~paste(popuptxt, round(mean_value,2)),
-                  group = "Hexagons") %>%
+                  group = "grid") %>%
       
       addLegend(
         position = "bottomright",
@@ -828,7 +752,7 @@ server <- function(input, output, session) {
       
       # Layers control
       addLayersControl(
-        overlayGroups = c("London", "Hexagons", "Movement Points", "Shops", "Museums"),
+        overlayGroups = c("London", "grid", "Movement Points", "Shops", "Museums"),
         options = layersControlOptions(collapsed = FALSE)
       ) %>%
       
@@ -841,9 +765,6 @@ server <- function(input, output, session) {
 # run the application
 shinyApp(ui = ui, server = server)
 
-
-
 #Tests
-result <- calculate_one_date(movement, tiles, london, pois, grid_15, "2020-03-23", c("City of London", "Westminster"))
-result <- compare_dates(movement, tiles, london, pois, hexagons, "2020-03-23", "2020-04-06", c("City of London", "Westminster"))
-
+#result <- calculate_one_date(movement, tiles, london, pois, grid_15, "2020-03-23", c("City of London", "Westminster"))
+#result <- compare_dates(movement, tiles, london, pois, grid, "2020-03-23", "2020-04-06", c("City of London", "Westminster"))
