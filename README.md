@@ -163,7 +163,7 @@ Anne Staskiewicz - anne.staskiewicz@uni-muenster.de
 
 Felix Disselkamp - fdisselk@uni-muenster.de
 
-##### Project Link: [https://github.com/Felioxx/SIS-Course](https://github.com/Felioxx/Mobile-ity-Scope)
+##### Project Link: [https://github.com/Felioxx/Mobile-ity-Scope](https://github.com/Felioxx/Mobile-ity-Scope)
 
 <p align="right">(<a href="https://github.com/Felioxx/Mobile-ity-Scope/tree/main?tab=readme-ov-file#mobility-scope">back to top</a>)</p>
 
